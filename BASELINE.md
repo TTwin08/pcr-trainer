@@ -172,3 +172,134 @@ Workflow Ref: v1.0 FINAL
 ---
 
 # END OF BASELINE.md
+---
+
+# Golden Baseline: M3
+
+**Tag:** baseline/m3-pass
+**Date:** 2026-09-17
+**App Version:** 0.3.0
+**Manifest:** v1.1 (APPROVED)
+**Entry Baseline:** baseline/m2-pass (7ed0c8b)
+
+---
+
+## M3 Scope
+
+Burmese Font + UI Labels (Localization Foundation)
+
+---
+
+## Entry-Gates (BLOCKING)
+
+ENTRY-GATE 1 — E8 Console Error Verification
+  Method: Firefox Android + Eruda Console (bookmarklet)
+  URL: localhost:7700
+  Result: PASS — Error panel empty
+
+ENTRY-GATE 2 — Font Source / Version / License Verification
+  Font: Noto Sans Myanmar
+  Version: v2.107 (tag NotoSansMyanmar-v2.107)
+  Source: github.com/notofonts/myanmar
+  License: SIL OFL 1.1 (OFL.txt at repo root)
+  File: NotoSansMyanmar-Regular.ttf
+  Format: TTF
+  Size: 235.52 KB
+  Inclusion: Local / fonts/
+  Notice: LICENSES/NotoSansMyanmar-OFL.txt
+  Result: PASS
+
+---
+
+## Architecture
+
+index.html → main.js → board.js → chess.js (M1)
+                   ↘
+                    i18n.js (M3 NEW)
+
+- index.html loads ONLY main.js (ES module)
+- main.js imports board.js, i18n.js, chess.js
+- i18n.js = hand-written EN/MY dictionary
+- No external i18n library
+- board.js unchanged from M2
+
+---
+
+## Deliverables
+
+| File | Action | Status |
+|------|--------|--------|
+| fonts/NotoSansMyanmar-Regular.ttf | NEW | Uploaded (235.52 KB) |
+| LICENSES/NotoSansMyanmar-OFL.txt | NEW | Uploaded |
+| js/i18n.js | NEW | Uploaded |
+| css/style.css | UPDATED | @font-face + Burmese class |
+| index.html | UPDATED | lang=my + i18n hooks |
+| js/main.js | UPDATED | i18n import + label apply |
+
+---
+
+## Exit Criteria Results (E1-E14)
+
+- E1  Font file included locally — PASS
+- E2  Font license notice — PASS
+- E3  @font-face applied — PASS
+- E4  Title renders — PASS
+- E5  Subtitle renders in Burmese — PASS
+- E6  Other static labels — N/A (M3 scope)
+- E7  Font fallback chain works — PASS
+- E8  Console errors (ENTRY-GATE 1) — PASS
+- E9  Board (M2) regression — PASS
+- E10 M1 smoke test regression — PASS
+- E11 Chrome Android runtime — PASS
+- E12 No new JS library — PASS
+- E13 Evidence package — Complete
+- E14 Architecture unchanged — PASS
+
+Outcome: 13 PASS | 1 N/A | 0 FAIL
+
+---
+
+## Runtime Evidence
+
+- Local: localhost:7700 → PASS (Firefox, Eruda console clean)
+- GitHub Pages: ttwinO8.github.io/pcr-trainer → PASS
+- M1 regression: === M1 SMOKE TEST: PASS ===
+- M2 regression: [M2] Board rendered: 64 squares, 32 pieces
+- Burmese render: subtitle displays correctly
+
+---
+
+## Deployment Note
+
+- Primary: Local HTTP Server (dev)
+- Secondary: GitHub Pages (documentation/demo)
+- Font remains local (no CDN)
+
+---
+
+## M3 Constraints Compliance
+
+- M1 Golden Baseline untouched (baseline/m1-pass / 36f0627)
+- M2 Golden Baseline untouched (baseline/m2-pass / 7ed0c8b)
+- chess.js v1.4.0 exact — no version change
+- Only approved font added (Noto Sans Myanmar)
+- No other new dependencies
+- No M4+ feature implemented
+- Architecture: index.html → main.js → board.js + i18n.js
+- STOP + ASK enforced at every gate
+
+---
+
+## Carry-Over to M4
+
+- None (E8 was resolved in Entry-Gate 1)
+
+---
+
+## Sign-off
+
+- M3: Product Owner — 2026-09-17
+- Constitution Ref: V3.0.0 FINAL
+- Workflow Ref: v1.0 FINAL
+
+---
