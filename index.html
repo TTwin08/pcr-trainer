@@ -1,25 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="my">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PCR Trainer — M2 Board</title>
+  <title>PCR Trainer — M3</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <h1>PCR Trainer</h1>
-  <p>M2 — Chess Board Display (Foundation)</p>
+  <h1 id="title" class="my-font"></h1>
+  <p id="subtitle" class="my-font"></p>
 
-  <!-- M1 smoke test output (regression check) -->
+  <!-- M1 smoke test (regression check) -->
   <pre id="output">loading...</pre>
 
-  <!-- M2 board container (empty — JS fills it) -->
+  <!-- M2 board container -->
   <div id="board"></div>
 
-  <!-- FEN display (for visual comparison) -->
+  <!-- FEN display (NOT translated — technical notation) -->
   <p id="fen" class="fen-display"></p>
 
-  <!-- ONLY main.js loaded. main.js imports board.js + chess.js -->
+  <!-- ONLY main.js loaded. main.js imports board.js + i18n.js + chess.js -->
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
