@@ -1,0 +1,125 @@
+/* PCR Trainer — M2 Board Styles */
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  margin: 16px;
+  background: #fafafa;
+  color: #222;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 4px 0;
+}
+
+p {
+  margin: 4px 0 12px 0;
+  font-size: 14px;
+  color: #444;
+}
+
+#output {
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  border-radius: 4px;
+  white-space: pre;
+}
+
+/* === Board wrapper: grid = [ranks][board]
+                        [files][empty] */
+.board-wrap {
+  display: grid;
+  grid-template-columns: 20px auto;
+  grid-template-rows: auto 20px;
+  width: fit-content;
+  margin: 16px auto;
+}
+
+.ranks {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  grid-template-rows: repeat(8, 1fr);
+}
+
+.ranks span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #555;
+  font-family: monospace;
+}
+
+.board {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  width: min(88vw, 400px);
+  height: min(88vw, 400px);
+  border: 2px solid #222;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.square {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: min(7vw, 32px);
+  line-height: 1;
+  user-select: none;
+}
+
+.square.light { background: #f0d9b5; }
+.square.dark  { background: #b58863; }
+
+/* White pieces: outline Unicode + white color + dark outline */
+.piece-w {
+  color: #ffffff;
+  text-shadow:
+    0 0 1px #333,
+    1px 1px 0 #333,
+   -1px 1px 0 #333,
+    1px -1px 0 #333,
+   -1px -1px 0 #333;
+}
+
+/* Black pieces: filled Unicode + dark color */
+.piece-b {
+  color: #111111;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+.files {
+  grid-column: 2;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.files span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #555;
+  font-family: monospace;
+}
+
+.fen-display {
+  font-family: monospace;
+  font-size: 11px;
+  color: #333;
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 8px;
+  border-radius: 4px;
+  word-break: break-all;
+  margin: 12px 0;
+}
