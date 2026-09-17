@@ -1,12 +1,19 @@
-// PCR Trainer — M2 First Board Build
-// Architecture: index.html → main.js → { chess.js, board.js }
-// Scope: M2 only (board foundation; no font/PGN/engine)
+// PCR Trainer — M3 Main Entry
+// Architecture: index.html → main.js → { chess.js, board.js, i18n.js }
+// Scope: M3 only (Burmese labels; no engine/PGN/training)
 
 import { Chess } from '../lib/chess.js';
 import { renderBoard, parseFen } from './board.js';
+import { t } from './i18n.js';
 
 // ============================================================
-// M1 SMOKE TEST (regression check — must remain PASS)
+// M3 — Apply i18n labels
+// ============================================================
+document.getElementById('title').textContent = t('title');
+document.getElementById('subtitle').textContent = t('subtitle');
+
+// ============================================================
+// M1 SMOKE TEST (regression — must remain PASS)
 // ============================================================
 const out = document.getElementById('output');
 const lines = [];
@@ -34,29 +41,22 @@ try {
 out.textContent = lines.join('\n');
 
 // ============================================================
-// M2 BOARD RENDER
+// M2 BOARD RENDER (regression — must remain PASS)
 // ============================================================
 const boardContainer = document.getElementById('board');
 const fenEl = document.getElementById('fen');
 
 try {
-  // Fresh game → starting position
   const freshGame = new Chess();
   const fen = freshGame.fen();
-
-  // Verify FEN parse
   const grid = parseFen(fen);
   if (grid.length !== 8) {
     throw new Error('Parsed grid has ' + grid.length + ' rows (expected 8)');
   }
 
-  // Render board
   renderBoard(boardContainer, fen);
-
-  // Display FEN for visual comparison
   fenEl.textContent = 'FEN: ' + fen;
 
-  // Diagnostics
   const squares = boardContainer.querySelectorAll('.square').length;
   const pieces  = boardContainer.querySelectorAll('.piece').length;
   console.log('[M2] Board rendered:', squares, 'squares,', pieces, 'pieces');
