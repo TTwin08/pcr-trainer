@@ -3,14 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PCR Trainer — M1 First Build</title>
+  <title>PCR Trainer — M2 Board</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <h1>PCR Trainer</h1>
-  <p>M1 First Build — chess.js v1.4.0 smoke test</p>
+  <p>M2 — Chess Board Display (Foundation)</p>
+
+  <!-- M1 smoke test output (regression check) -->
   <pre id="output">loading...</pre>
 
-  <!-- M1 First Build: chess.js ESM import -->
+  <!-- M2 board container (empty — JS fills it) -->
+  <div id="board"></div>
+
+  <!-- FEN display (for visual comparison) -->
+  <p id="fen" class="fen-display"></p>
+
+  <!-- ONLY main.js loaded. main.js imports board.js + chess.js -->
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
