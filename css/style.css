@@ -1,4 +1,24 @@
-/* PCR Trainer — M2 Board Styles */
+/* ============================================================
+   PCR Trainer — Styles
+   M2 Board styles + M3 Font (Burmese)
+   ============================================================ */
+
+/* ---------- M3: Burmese Font ---------- */
+
+@font-face {
+  font-family: 'Noto Sans Myanmar';
+  src: url('../fonts/NotoSansMyanmar-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.my-font {
+  font-family: 'Noto Sans Myanmar', system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+}
+
+/* ---------- Base ---------- */
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
@@ -29,8 +49,10 @@ p {
   white-space: pre;
 }
 
-/* === Board wrapper: grid = [ranks][board]
-                        [files][empty] */
+/* ---------- M2: Board wrapper ---------- */
+/* grid = [ranks][board]
+          [files][empty] */
+
 .board-wrap {
   display: grid;
   grid-template-columns: 20px auto;
