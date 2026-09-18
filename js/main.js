@@ -5,12 +5,28 @@
 import { Chess } from '../lib/chess.js';
 import { renderBoard, parseFen } from './board.js';
 import { t } from './i18n.js';
+import { parseAndMap, toPGN } from './pgn-model.js';
+import { initPgnUI } from './pgn-ui.js';
 
 // ============================================================
 // M3 — Apply i18n labels
 // ============================================================
 document.getElementById('title').textContent = t('title');
 document.getElementById('subtitle').textContent = t('subtitle');
+
+// ============================================================
+// M4 — Initialize PGN UI (parser accessed via window.PgnParser)
+// NOTE: index.html must load ./lib/pgn-parser.umd.js BEFORE this module
+// ============================================================
+const Parser = window.PgnParser;
+if (Parser) {
+  initPgnUI({
+    parseAndMap: (text) => parseAndMap(Parser, text),
+    toPGN,
+  });
+} else {
+  console.warn('[M4] window.PgnParser not available');
+}
 
 // ============================================================
 // M1 SMOKE TEST (regression — must remain PASS)
