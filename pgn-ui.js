@@ -1,0 +1,166 @@
+// js/pgn-ui.js — PCR M4 PGN Import/Export UI handlers
+// Local-only processing: File API + Blob + Clipboard. No network calls.
+// No external dependencies.
+//
+// NOTE: M4 v1 minimal UI. Board update from imported game — deferred.
+// Signature chosen: initPgnUI({ parseAndMap, toPGN }) — per G6 Step 5.
+
+const LANG = (document.documentElement.lang || 'en').slice(0, 2);
+
+const LABELS = {
+  en: {
+    importBtn: 'Import PGN',
+    exportBtn: 'Export PGN',
+    statusParsing: 'Parsing...',
+    statusLoaded: (n) => n + ' game(s) loaded',
+    statusParseError: (m) => 'Error: ' + m,
+    statusNoGames: 'No games loaded',
+    statusExported: 'Exported (check Downloads)',
+    statusNoParser: 'Parser not available',
+  },
+  my: {
+    importBtn: 'PGN ဖွင့်ရန်',
+    exportBtn: 'PGN သိမ်းရန်',
+    statusParsing: 'ဖတ်နေသည်...',
+    statusLoaded: (n) => 'ဂိမ်း ' + n + ' ခု ရရှိပြီ',
+    statusParseError: (m) => 'အမှား: ' + m,
+    statusNoGames: 'ဂိမ်း မရှိသေးပါ',
+    statusExported: 'သိမ်းပြီးပါပြီ (Downloads ကို စစ်ပါ)',
+    statusNoParser: 'Parser မရရှိပါ',
+  },
+};
+
+const L = LABELS[LANG] || LABELS.en;
+
+function injectStylesOnce() {
+  if (document.getElementById('pgn-ui-style')) return;
+  const style = document.createElement('style');
+  style.id = 'pgn-ui-style';
+  style.textContent = [
+    '.pgn-ui { padding: 8px 0; }',
+    '.pgn-ui button { margin-right: 8px; padding: 6px 12px; }',
+    '.pgn-ui .pgn-status { font-size: 0.9em; min-height: 1.2em; margin: 6px 0 0 0; }',
+  ].join('\n');
+  document.head.appendChild(style);
+}
+
+export function initPgnUI({ parseAndMap, toPGN }) {
+  if (typeof parseAndMap !== 'function' || typeof toPGN !== 'function') {
+    console.warn('[M4] initPgnUI requires { parseAndMap, toPGN }');
+    return null;
+  }
+
+  const state = {
+    games: [],
+    lastPgnText: '',
+  };
+
+  injectStylesOnce();
+
+  const container = document.createElement('div');
+  container.id = 'pgn-ui';
+  container.className = 'pgn-ui';
+
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.id = 'pgn-import-btn';
+  importBtn.textContent = L.importBtn;
+
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.id = 'pgn-export-btn';
+  exportBtn.textContent = L.exportBtn;
+  exportBtn.disabled = true;
+
+  const status = document.createElement('p');
+  status.id = 'pgn-status';
+  status.className = 'pgn-status';
+  status.textContent = '';
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.id = 'pgn-file-input';
+  fileInput.accept = '.pgn,.txt,application/x-chess-pgn,text/plain';
+  fileInput.style.display = 'none';
+
+  container.appendChild(importBtn);
+  container.appendChild(exportBtn);
+  container.appendChild(status);
+  container.appendChild(fileInput);
+
+  // Insert before #board if present; otherwise append to body
+  const boardEl = document.getElementById('board');
+  if (boardEl && boardEl.parentNode) {
+    boardEl.parentNode.insertBefore(container, boardEl);
+  } else {
+    document.body.appendChild(container);
+  }
+
+  // --- Handlers ---
+
+  importBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    status.textContent = L.statusParsing;
+    try {
+      const text = await file.text();
+      const result = parseAndMap(text);
+      const games = Array.isArray(result) ? result : [];
+      state.games = games;
+      state.lastPgnText = text;
+      exportBtn.disabled = games.length === 0;
+      status.textContent = games.length
+        ? L.statusLoaded(games.length)
+        : L.statusNoGames;
+    } catch (e) {
+      state.games = [];
+      state.lastPgnText = '';
+      exportBtn.disabled = true;
+      status.textContent = L.statusParseError(
+        (e && e.message) ? e.message : String(e)
+      );
+    }
+    fileInput.value = '';
+  });
+
+  exportBtn.addEventListener('click', () => {
+    if (!state.games.length) return;
+    let pgnText;
+    try {
+      pgnText = toPGN(state.games);
+    } catch (e) {
+      status.textContent = L.statusParseError(
+        (e && e.message) ? e.message : String(e)
+      );
+      return;
+    }
+    // Download via Blob
+    try {
+      const blob = new Blob([pgnText], { type: 'application/x-chess-pgn' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'pcr-export.pgn';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      // ignore — clipboard fallback below
+    }
+    // Best-effort clipboard copy
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText(pgnText).catch(() => {});
+    }
+    status.textContent = L.statusExported;
+  });
+
+  return {
+    getGames: () => state.games.slice(),
+    getLastPgnText: () => state.lastPgnText,
+  };
+}
