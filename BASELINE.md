@@ -464,3 +464,160 @@ Not AI-generated. Independent reference source.
     toPGN,
   });
 
+---
+
+## M6 — Post-Import Viewer Refresh
+
+**App Version:** 0.6.0
+**Tag:** baseline/m6-pass
+**Entry Baseline:** baseline/m5-pass (4faed3b)
+**Date:** 2026-09-18
+
+### Goal
+
+M5 viewer ကို M4 import flow နဲ့ ချိတ်ဆက်။ PGN import
+ပြီးရင် viewer auto-refresh ဖြစ်ရမယ်။
+
+Core objective:
+"Import PGN → viewer dropdown updates → board
+ shows first game's initial position → navigation
+ buttons enable"
+
+### Deliverables
+
+| File | Type | Change | Notes |
+|---|---|---|---|
+| `js/pgn-ui.js` | UPDATE | +4 lines | onImport callback param |
+| `js/main.js` | UPDATE | +7 lines | pre-declare viewerHandle (TDZ) + onImport wiring |
+
+**Net additions:** ~11 lines · logic preserved
+
+### Architecture (M6)
+
+index.html → [UMD parser] → [main.js module]
+  main.js → M4 (pgn-ui.js) with onImport callback
+  onImport → M5 (pgn-viewer.js) refresh()
+  viewer → M2 (board.js) renderBoard()
+
+### Changes Summary
+
+**js/pgn-ui.js (+4 lines):**
+- Signature: `initPgnUI({ parseAndMap, toPGN, onImport })`
+- Success path: callback invocation with try/catch swallow
+- Error path: untouched (onImport NOT called on error)
+
+**js/main.js (+7 lines):**
+- Pre-declare `let viewerHandle = null;` before M4 block (TDZ safety)
+- M4 block: `onImport: () => { viewerHandle.refresh(); }` callback
+- M5 block: `const viewerHandle` → `viewerHandle =` (assign to pre-declared)
+- M1/M2/M3 blocks: untouched
+
+### Test Results — T1–T6, T8
+
+| Test | Result | Detail |
+|---|---|---|
+| T1 | ✅ PASS | Valid import → 1 game, options=1 |
+| T2 | ✅ PASS | First game auto-selected (selectedIdx=0, moveIdx=0) |
+| T3 | ✅ PASS | Board shows initial FEN (match) |
+| T4 | ✅ PASS | Nav buttons: init/prev disabled, next/final enabled |
+| T5 | ✅ PASS | Invalid import → viewer preserved (state=same, board=same) |
+| T6 | ✅ PASS | M5 regression inline (9/9 sub-tests) |
+| T8 | ✅ PASS | Network heuristic + static review (zero fetch/XHR/CDN) |
+
+**Grand Total: 7/7 PASS · T6 sub-tests: 9/9 PASS**
+
+### T6 — M5 Regression Detail (Inline 9 sub-tests)
+
+| Sub-test | Covers | Result |
+|---|---|---|
+| T6.1 | M5-T1 game list renders | ✅ options=1 |
+| T6.2 | M5-T2 initial position | ✅ moveIdx=0, fenMatch=true |
+| T6.3 | M5-T3 Next updates board | ✅ moveIdx 0→1 |
+| T6.4 | M5-T4 Prev updates back | ✅ moveIdx 3→2 |
+| T6.5 | M5-T5 Final shows last FEN | ✅ moveIdx=6 |
+| T6.6 | M5-T6 FEN/SetUp starts from FEN | ✅ fen match |
+| T6.7 | M5-T7 invalid SAN → graceful error | ✅ viewerAlive=true |
+| T6.8 | M5-T9a REF-1 per-ply FEN | ✅ 7/7 match |
+| T6.9 | M5-T9b REF-2 per-ply FEN | ✅ 3/3 match |
+
+**→ M5 functionality fully preserved through M6 changes.**
+
+### T5 — Invalid Import Behavior (Documented)
+
+**Test setup:**
+- Precondition: valid PGN already imported (T1 state)
+- Invalid import: `'[Event "M6-BAD'` (unclosed bracket —
+  parser-level error)
+
+**Actual M4 flow (verified at runtime):**
+1. `parseAndMap` throws (parser error)
+2. M4 catch block executes: state.games=[], status=error
+3. `onImport` NOT called (success path only)
+4. Viewer internal state unchanged (state=same, board=same)
+
+**PASS criterion:** viewer state + board DOM identical
+before/after invalid import. ✅ Verified.
+
+### T8 — Static Network Review
+
+| File | fetch/XHR/CDN/dynamic import |
+|---|---|
+| `js/pgn-ui.js` | none |
+| `js/main.js` | none |
+| `js/pgn-viewer.js` | none |
+
+**Local APIs used:** File API · Blob · Clipboard ·
+DOM · chess.js (local) · pgn-parser (local UMD)
+
+### Constraints Preserved
+
+- 🔒 M1/M2/M3 baselines IMMUTABLE
+- 🔒 M4/M5 baselines preserved (tags not moved)
+- 🔒 chess.js v1.4.0 exact
+- 🔒 @mliebelt/pgn-parser v1.4.19 only
+- 🔒 No new dependency
+- 🔒 No package.json change
+- 🔒 No npm install
+- 🔒 No CDN at runtime
+- 🔒 Local-only processing (no network/telemetry/analytics)
+
+### M4 Status (Honest Note — Law 1)
+
+- **M4 = CONDITIONAL CLOSE** (unchanged)
+- M4 file `pgn-ui.js` touched: +4 lines
+- This is an M6-scoped addition (onImport callback)
+- M4 runtime 24/24 remains a **separate deferred
+  sequence** — NOT claimed as verified in M6
+- M6 test T6.7 confirms M4's error path behavior
+  remained intact
+
+### M5 Status
+
+- **M5 = CLOSE** (baseline/m5-pass, 4faed3b)
+- `js/pgn-viewer.js` UNCHANGED
+- `index.html` UNCHANGED
+- M5 baseline tag NOT moved
+
+### Known Limitations (M6 v1)
+
+1. **onImport success-only** — invalid import does
+   NOT trigger onError callback.
+   Viewer preserves prior state (intentional v1 design).
+   Future milestone may add onError if needed.
+2. **Board position after failed nav** — invalid SAN in
+   valid-parsed game → board shows last valid FEN
+   (unchanged behavior from M5).
+3. **No re-import of same file** — fileInput.value reset
+   works (M4 behavior preserved).
+
+### Deferred to Next Session
+
+1. M4 runtime re-verify (24/24) — separate sequence
+   from M6, still pending
+2. M5 UX deferred: title (M3→M5) stale, viewer
+   position
+3. Cleanup: test-m6-verify.html, test-m4-step8-diag.html
+4. M7 planning
+
+---
+
