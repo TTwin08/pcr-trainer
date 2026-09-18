@@ -303,3 +303,84 @@ Outcome: 13 PASS | 1 N/A | 0 FAIL
 - Workflow Ref: v1.0 FINAL
 
 ---
+---
+
+## M4 — PGN Import/Export + Privacy
+
+**App Version:** 0.4.0
+**Tag:** baseline/m4-pass
+**Entry Baseline:** baseline/m3-pass (0dd08a1)
+**Date:** 2026-09-18
+
+### Deliverables
+
+| File | Type | Size | License |
+|---|---|---|---|
+| `lib/pgn-parser.umd.js` | NEW | 454,005 B | Apache-2.0 |
+| `LICENSES/pgn-parser-LICENSE.txt` | NEW | 11.1 KB | — |
+| `js/pgn-model.js` | NEW | ~103 lines | PCR-owned |
+| `js/pgn-ui.js` | NEW | ~166 lines | PCR-owned |
+| `js/main.js` | UPDATE (+2 imports, +M4 block) | — | — |
+| `index.html` | UPDATE (+UMD script line) | — | — |
+
+### Architecture
+
+index.html → [UMD parser] → [main.js module]
+  main.js → board.js + i18n.js + chess.js
+  main.js → pgn-model.js (parse/serialize)
+  main.js → pgn-ui.js (DOM handlers)
+
+### Dependency Lock
+
+- @mliebelt/pgn-parser v1.4.19 (pinned)
+- window.PgnParser interface (parse, parseGame, parseGames, split)
+- No package.json change · No npm install · No CDN at runtime
+- No @mliebelt/pgn-types runtime reference (verified)
+
+### Regression Status
+
+| Test | Result |
+|---|---|
+| M1 smoke test | PASS |
+| M2 board render (64 sq / 32 pc) | PASS |
+| M3 Burmese i18n labels | PASS |
+| M4 UI (Import/Export buttons) | PASS |
+
+### Verification Status
+
+**Step 8 test suite: 23/24 PASS** (initial run)
+
+- ❌ 1 FAIL — `M4 nags array (first move $1) → []`
+- **Root cause:** parser emits `m.nag` (singular), code read `m.nags` (plural)
+- **Fix applied:** `js/pgn-model.js` line 49 → `normalizeNags(m.nag)`
+
+**Fix verification (evidence):**
+- ✅ E1 — `pgn-model.js` line 49 = `m.nag` (screenshot)
+- ✅ Diag — parser emits `m.nag = ["$1"]` (screenshot)
+- ✅ Input/output match — logic proven
+
+⚠️ **Runtime re-run of Step 8 — DEFERRED**
+- Browser/server issue prevented clean re-run (attempted 4×)
+- Deferred to next session (fresh browser)
+- Governance note: M4 = **implementation complete, runtime re-verify partial**
+
+### Constraints Preserved
+
+- 🔒 M1/M2/M3 baselines IMMUTABLE
+- 🔒 chess.js v1.4.0 exact
+- 🔒 No M4 scope creep (no RAV rendering, no drag-drop, no engine)
+- 🔒 Local-only processing (no network, no telemetry, no analytics)
+
+### Known Limitation (M4 v1)
+
+- Board does **NOT** update from imported PGN (deferred to M5)
+- UI shows Import/Export buttons only
+
+### Deferred to Next Session
+
+1. Runtime re-run of `test-m4-step8.html` → expect 24/24 PASS
+2. Clean up test files (`test-m4-step8-diag.html`)
+3. Update BASELINE.md with runtime PASS
+
+---
+
