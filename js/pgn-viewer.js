@@ -1,10 +1,7 @@
-// js/pgn-viewer.js — PCR M7 PGN viewer (navigation + board driver + RAV)
-// Reads M4 pgn-model via getGames callback. Renders board via M2 renderBoard.
-// Uses chess.js for move legality + FEN. Zero dependencies.
-// Contract: initPgnViewer({ getGames, renderBoard, Chess })
+// js/pgn-viewer.js — PCR M8 PGN viewer (navigation + board driver + RAV + move list)
 // M5: mainline navigation (moveIdx: 0..N)
 // M7: RAV variations tree display (inline, depth-capped at 3)
-// NOTE (M7): RAV CSS lives in css/style.css. M5 viewer CSS remains dynamic (unchanged).
+// M8: Move list (mainline + nested variations, click to jump)
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 const MAX_VARIATION_DEPTH = 3;
@@ -85,7 +82,7 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
 
   const container = document.getElementById('pgn-viewer');
   if (!container) {
-    console.warn('[M7] #pgn-viewer container not found');
+    console.warn('[M8] #pgn-viewer container not found');
     return {
       refresh: () => {},
       getFenAt: () => ({ fen: '', error: 'no container' }),
@@ -95,7 +92,6 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   container.classList.add('pgn-viewer');
   container.innerHTML = '';
 
-  // --- DOM ---
   const row1 = document.createElement('div');
   row1.className = 'pgn-viewer-row';
   const selectLabel = document.createElement('label');
@@ -129,6 +125,10 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   ravContainer.className = 'pgn-viewer-rav';
   ravContainer.id = 'pgn-viewer-rav';
 
+  const moveListContainer = document.createElement('div');
+  moveListContainer.className = 'pgn-viewer-move-list';
+  moveListContainer.id = 'pgn-viewer-move-list';
+
   const status = document.createElement('p');
   status.className = 'pgn-viewer-status';
   status.id = 'pgn-viewer-status';
@@ -138,32 +138,63 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   container.appendChild(row2);
   container.appendChild(counter);
   container.appendChild(ravContainer);
+  container.appendChild(moveListContainer);
   container.appendChild(status);
 
-  // --- LOGIC (pure) ---
+  // === PART B ဒီကနေ ဆက် ===
+// --- LOGIC (pure) ---
 
-  function computeStartFen(game) {
-    if (!game || !game.tags) return null;
-    if (game.tags.SetUp === '1' && typeof game.tags.FEN === 'string' && game.tags.FEN.length) {
-      return game.tags.FEN;
+function computeStartFen(game) {
+  if (!game || !game.tags) return null;
+  if (game.tags.SetUp === '1' && typeof game.tags.FEN === 'string' && game.tags.FEN.length) {
+    return game.tags.FEN;
+  }
+  return null;
+}
+
+function buildFenAt(game, idx) {
+  if (!game) return { fen: '', error: 'no game' };
+  const startFen = computeStartFen(game);
+  let c;
+  try {
+    c = startFen ? new Chess(startFen) : new Chess();
+  } catch (e) {
+    return { fen: '', error: 'Invalid start FEN: ' + (e && e.message ? e.message : String(e)) };
+  }
+  const moves = Array.isArray(game.moves) ? game.moves : [];
+  const limit = Math.max(0, Math.min(idx, moves.length));
+  for (let i = 0; i < limit; i++) {
+    const san = moves[i] && moves[i].san;
+    if (!san) continue;
+    try {
+      c.move(san);
+    } catch (e) {
+      return {
+        fen: c.fen(),
+        error: L.invalidMove(san) + (e && e.message ? ' (' + e.message + ')' : ''),
+      };
     }
-    return null;
+  }
+  return { fen: c.fen(), error: null };
+}
+
+function buildFenAtPath(game, path, varPos) {
+  if (!game) return { fen: '', error: 'no game' };
+  const startFen = computeStartFen(game);
+  let c;
+  try {
+    c = startFen ? new Chess(startFen) : new Chess();
+  } catch (e) {
+    return { fen: '', error: 'Invalid start FEN: ' + (e && e.message ? e.message : String(e)) };
   }
 
-  // M5 — rebuild-from-start (mainline only). Unchanged.
-  function buildFenAt(game, idx) {
-    if (!game) return { fen: '', error: 'no game' };
-    const startFen = computeStartFen(game);
-    let c;
-    try {
-      c = startFen ? new Chess(startFen) : new Chess();
-    } catch (e) {
-      return { fen: '', error: 'Invalid start FEN: ' + (e && e.message ? e.message : String(e)) };
-    }
-    const moves = Array.isArray(game.moves) ? game.moves : [];
-    const limit = Math.max(0, Math.min(idx, moves.length));
+  let currentList = Array.isArray(game.moves) ? game.moves : [];
+
+  for (let s = 0; s < path.length; s++) {
+    const step = path[s];
+    const limit = Math.max(0, Math.min(step.moveIdx, currentList.length));
     for (let i = 0; i < limit; i++) {
-      const san = moves[i] && moves[i].san;
+      const san = currentList[i] && currentList[i].san;
       if (!san) continue;
       try {
         c.move(san);
@@ -174,296 +205,383 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
         };
       }
     }
-    return { fen: c.fen(), error: null };
+    const parentMove = currentList[step.moveIdx];
+    if (!parentMove || !Array.isArray(parentMove.variations) ||
+        !parentMove.variations[step.varIdx]) {
+      return { fen: c.fen(), error: L.invalidPath };
+    }
+    currentList = parentMove.variations[step.varIdx];
   }
 
-  // M7 — variation-aware FEN. Unchanged.
-  function buildFenAtPath(game, path, varPos) {
-    if (!game) return { fen: '', error: 'no game' };
-    const startFen = computeStartFen(game);
-    let c;
+  const limit2 = Math.max(0, Math.min(varPos, currentList.length));
+  for (let i = 0; i < limit2; i++) {
+    const san = currentList[i] && currentList[i].san;
+    if (!san) continue;
     try {
-      c = startFen ? new Chess(startFen) : new Chess();
+      c.move(san);
     } catch (e) {
-      return { fen: '', error: 'Invalid start FEN: ' + (e && e.message ? e.message : String(e)) };
+      return {
+        fen: c.fen(),
+        error: L.invalidMove(san) + ' (' + (e && e.message ? e.message : String(e)) + ')',
+      };
     }
+  }
+  return { fen: c.fen(), error: null };
+}
 
-    let currentList = Array.isArray(game.moves) ? game.moves : [];
-
-    for (let s = 0; s < path.length; s++) {
-      const step = path[s];
-      const limit = Math.max(0, Math.min(step.moveIdx, currentList.length));
-      for (let i = 0; i < limit; i++) {
-        const san = currentList[i] && currentList[i].san;
-        if (!san) continue;
-        try {
-          c.move(san);
-        } catch (e) {
-          return {
-            fen: c.fen(),
-            error: L.invalidMove(san) + (e && e.message ? ' (' + e.message + ')' : ''),
-          };
-        }
-      }
-      const parentMove = currentList[step.moveIdx];
-      if (!parentMove || !Array.isArray(parentMove.variations) ||
-          !parentMove.variations[step.varIdx]) {
-        return { fen: c.fen(), error: L.invalidPath };
-      }
-      currentList = parentMove.variations[step.varIdx];
+function getCurrentList() {
+  if (state.selectedIdx < 0) return [];
+  const game = state.games[state.selectedIdx];
+  if (!game) return [];
+  let list = Array.isArray(game.moves) ? game.moves : [];
+  for (let s = 0; s < state.variationPath.length; s++) {
+    const step = state.variationPath[s];
+    const parentMove = list[step.moveIdx];
+    if (!parentMove || !Array.isArray(parentMove.variations) ||
+        !parentMove.variations[step.varIdx]) {
+      return [];
     }
+    list = parentMove.variations[step.varIdx];
+  }
+  return list;
+}
 
-    const limit2 = Math.max(0, Math.min(varPos, currentList.length));
-    for (let i = 0; i < limit2; i++) {
-      const san = currentList[i] && currentList[i].san;
-      if (!san) continue;
-      try {
-        c.move(san);
-      } catch (e) {
-        return {
-          fen: c.fen(),
-          error: L.invalidMove(san) + ' (' + (e && e.message ? e.message : String(e)) + ')',
-        };
-      }
+function getAnchorIndex() {
+  if (state.variationPath.length > 0) return state.variationPos - 1;
+  return state.moveIdx;
+}
+
+function formatVariation(moves, maxMoves) {
+  maxMoves = maxMoves || 8;
+  if (!Array.isArray(moves) || moves.length === 0) return '(empty)';
+  const parts = [];
+  for (let i = 0; i < Math.min(moves.length, maxMoves); i++) {
+    const m = moves[i];
+    if (!m || !m.san) continue;
+    if (m.color === 'w' && m.moveNumber != null) {
+      parts.push(m.moveNumber + '.');
+    } else if (i === 0 && m.color === 'b' && m.moveNumber != null) {
+      parts.push(m.moveNumber + '...');
     }
-    return { fen: c.fen(), error: null };
+    parts.push(m.san);
+  }
+  if (moves.length > maxMoves) parts.push('\u2026');
+  return parts.join(' ');
+}
+
+function validateVariationPath(game, path, varPos) {
+  if (!game || !Array.isArray(path)) return { valid: false, list: null };
+  if (path.length === 0) return { valid: false, list: null };
+  if (path.length > MAX_VARIATION_DEPTH) return { valid: false, list: null };
+
+  let list = Array.isArray(game.moves) ? game.moves : [];
+
+  for (let s = 0; s < path.length; s++) {
+    const step = path[s];
+    if (!step || !Number.isInteger(step.moveIdx) || !Number.isInteger(step.varIdx)) {
+      return { valid: false, list: null };
+    }
+    if (step.moveIdx < 0 || step.moveIdx >= list.length) {
+      return { valid: false, list: null };
+    }
+    const parentMove = list[step.moveIdx];
+    if (!parentMove || !Array.isArray(parentMove.variations)) {
+      return { valid: false, list: null };
+    }
+    if (step.varIdx < 0 || step.varIdx >= parentMove.variations.length) {
+      return { valid: false, list: null };
+    }
+    list = parentMove.variations[step.varIdx];
   }
 
-  // --- Context helpers (pure reads) ---
+  if (!Number.isInteger(varPos) || varPos < 0 || varPos > list.length) {
+    return { valid: false, list: null };
+  }
 
-  function getCurrentList() {
-    if (state.selectedIdx < 0) return [];
+  return { valid: true, list: list };
+}
+
+function getCurrentHighlightKey() {
+  if (state.selectedIdx < 0) return null;
+  if (state.variationPath.length === 0) return 'main:' + state.moveIdx;
+  return 'var:' + JSON.stringify(state.variationPath) + ':' + state.variationPos;
+}
+
+function setStatus(text, isError) {
+  status.textContent = text || '';
+  if (isError) status.classList.add('error');
+  else status.classList.remove('error');
+}
+
+function updateCounter() {
+  if (state.selectedIdx < 0) {
+    counter.textContent = L.noGame;
+    return;
+  }
+  if (state.variationPath.length > 0) {
+    const list = getCurrentList();
+    counter.textContent = L.variationCounter(
+      state.variationPath.length,
+      state.variationPos,
+      list.length
+    );
+    return;
+  }
+  if (state.moveIdx === 0) counter.textContent = L.counterInitial;
+  else if (state.moveIdx >= state.totalMoves) counter.textContent = L.counterFinal;
+  else counter.textContent = L.counterMid(state.moveIdx, state.totalMoves);
+}
+
+function updateButtons() {
+  const hasGame = state.selectedIdx >= 0;
+
+  if (state.variationPath.length > 0) {
+    const list = getCurrentList();
+    const N = list.length;
+    btnInit.disabled  = !hasGame || state.variationPos <= 0;
+    btnPrev.disabled  = !hasGame;
+    btnNext.disabled  = !hasGame || state.variationPos >= N;
+    btnFinal.disabled = !hasGame || state.variationPos >= N;
+    return;
+  }
+
+  btnInit.disabled  = !hasGame || state.moveIdx <= 0;
+  btnPrev.disabled  = !hasGame || state.moveIdx <= 0;
+  btnNext.disabled  = !hasGame || state.moveIdx >= state.totalMoves;
+  btnFinal.disabled = !hasGame || state.moveIdx >= state.totalMoves;
+}
+
+function renderRav() {
+  ravContainer.innerHTML = '';
+
+  const inVar = state.variationPath.length > 0;
+  let variations = [];
+
+  if (state.selectedIdx >= 0 && state.games[state.selectedIdx]) {
     const game = state.games[state.selectedIdx];
-    if (!game) return [];
-    let list = Array.isArray(game.moves) ? game.moves : [];
-    for (let s = 0; s < state.variationPath.length; s++) {
-      const step = state.variationPath[s];
-      const parentMove = list[step.moveIdx];
-      if (!parentMove || !Array.isArray(parentMove.variations) ||
-          !parentMove.variations[step.varIdx]) {
-        return [];
-      }
-      list = parentMove.variations[step.varIdx];
-    }
-    return list;
-  }
-
-  // M7 — anchor index (index of the move whose variations we display).
-  //   Mainline: the NEXT move to play = moveIdx
-  //   Variation: the JUST-PLAYED move = variationPos - 1
-  function getAnchorIndex() {
-    if (state.variationPath.length > 0) return state.variationPos - 1;
-    return state.moveIdx;
-  }
-
-  function formatVariation(moves, maxMoves) {
-    maxMoves = maxMoves || 8;
-    if (!Array.isArray(moves) || moves.length === 0) return '(empty)';
-    const parts = [];
-    for (let i = 0; i < Math.min(moves.length, maxMoves); i++) {
-      const m = moves[i];
-      if (!m || !m.san) continue;
-      if (m.color === 'w' && m.moveNumber != null) {
-        parts.push(m.moveNumber + '.');
-      } else if (i === 0 && m.color === 'b' && m.moveNumber != null) {
-        parts.push(m.moveNumber + '...');
-      }
-      parts.push(m.san);
-    }
-    if (moves.length > maxMoves) parts.push('\u2026');
-    return parts.join(' ');
-  }
-
-  // --- UI updates ---
-
-  function setStatus(text, isError) {
-    status.textContent = text || '';
-    if (isError) status.classList.add('error');
-    else status.classList.remove('error');
-  }
-
-  function updateCounter() {
-    if (state.selectedIdx < 0) {
-      counter.textContent = L.noGame;
-      return;
-    }
-    if (state.variationPath.length > 0) {
-      const list = getCurrentList();
-      counter.textContent = L.variationCounter(
-        state.variationPath.length,
-        state.variationPos,
-        list.length
-      );
-      return;
-    }
-    // M5 mainline (unchanged)
-    if (state.moveIdx === 0) counter.textContent = L.counterInitial;
-    else if (state.moveIdx >= state.totalMoves) counter.textContent = L.counterFinal;
-    else counter.textContent = L.counterMid(state.moveIdx, state.totalMoves);
-  }
-
-  function updateButtons() {
-    const hasGame = state.selectedIdx >= 0;
-
-    if (state.variationPath.length > 0) {
-      const list = getCurrentList();
-      const N = list.length;
-      btnInit.disabled  = !hasGame || state.variationPos <= 0;
-      btnPrev.disabled  = !hasGame;
-      btnNext.disabled  = !hasGame || state.variationPos >= N;
-      btnFinal.disabled = !hasGame || state.variationPos >= N;
-      return;
-    }
-
-    // M5 mainline (unchanged)
-    btnInit.disabled  = !hasGame || state.moveIdx <= 0;
-    btnPrev.disabled  = !hasGame || state.moveIdx <= 0;
-    btnNext.disabled  = !hasGame || state.moveIdx >= state.totalMoves;
-    btnFinal.disabled = !hasGame || state.moveIdx >= state.totalMoves;
-  }
-
-  // M7 — render RAV. Anchor = getAnchorIndex() (context-dependent).
-  function renderRav() {
-    ravContainer.innerHTML = '';
-
-    const inVar = state.variationPath.length > 0;
-    let variations = [];
-
-    if (state.selectedIdx >= 0 && state.games[state.selectedIdx]) {
-      const game = state.games[state.selectedIdx];
-      const currentList = inVar
-        ? getCurrentList()
-        : (Array.isArray(game.moves) ? game.moves : []);
-      const anchorIdx = getAnchorIndex();
-      const anchorMove = (anchorIdx >= 0 && anchorIdx < currentList.length)
-        ? currentList[anchorIdx]
-        : null;
-      if (anchorMove && Array.isArray(anchorMove.variations)) {
-        variations = anchorMove.variations;
-      }
-    }
-
-    if (variations.length === 0 && !inVar) {
-      ravContainer.classList.remove('active');
-      return;
-    }
-
-    ravContainer.classList.add('active');
-
-    if (variations.length > 0) {
-      const header = document.createElement('p');
-      header.className = 'pgn-viewer-rav-header';
-      header.textContent = L.variationsHeader + ' (' + variations.length + ')';
-      ravContainer.appendChild(header);
-
-      const displayDepth = state.variationPath.length + 1;
-      for (let i = 0; i < variations.length; i++) {
-        const item = document.createElement('div');
-        item.className = 'pgn-viewer-rav-item';
-        item.dataset.varIdx = String(i);
-        item.dataset.depth = String(displayDepth);
-        item.textContent = formatVariation(variations[i]);
-        item.addEventListener('click', (function (idx) {
-          return function () { enterVariation(idx); };
-        })(i));
-        ravContainer.appendChild(item);
-      }
-    }
-
-    if (inVar) {
-      const exitBtn = document.createElement('button');
-      exitBtn.type = 'button';
-      exitBtn.className = 'pgn-viewer-exit';
-      exitBtn.textContent = L.exitVariation;
-      exitBtn.addEventListener('click', exitVariation);
-      ravContainer.appendChild(exitBtn);
+    const currentList = inVar
+      ? getCurrentList()
+      : (Array.isArray(game.moves) ? game.moves : []);
+    const anchorIdx = getAnchorIndex();
+    const anchorMove = (anchorIdx >= 0 && anchorIdx < currentList.length)
+      ? currentList[anchorIdx]
+      : null;
+    if (anchorMove && Array.isArray(anchorMove.variations)) {
+      variations = anchorMove.variations;
     }
   }
 
-  function renderCurrent() {
-    if (state.selectedIdx < 0) {
-      updateCounter();
-      updateButtons();
-      renderRav();
-      return;
-    }
-    const game = state.games[state.selectedIdx];
-    if (!game) {
-      updateCounter();
-      updateButtons();
-      renderRav();
-      return;
-    }
+  if (variations.length === 0 && !inVar) {
+    ravContainer.classList.remove('active');
+    return;
+  }
 
-    let result;
-    if (state.variationPath.length === 0) {
-      result = buildFenAt(game, state.moveIdx);       // M5 path (unchanged)
+  ravContainer.classList.add('active');
+
+  if (variations.length > 0) {
+    const header = document.createElement('p');
+    header.className = 'pgn-viewer-rav-header';
+    header.textContent = L.variationsHeader + ' (' + variations.length + ')';
+    ravContainer.appendChild(header);
+
+    const displayDepth = state.variationPath.length + 1;
+    for (let i = 0; i < variations.length; i++) {
+      const item = document.createElement('div');
+      item.className = 'pgn-viewer-rav-item';
+      item.dataset.varIdx = String(i);
+      item.dataset.depth = String(displayDepth);
+      item.textContent = formatVariation(variations[i]);
+      item.addEventListener('click', (function (idx) {
+        return function () { enterVariation(idx); };
+      })(i));
+      ravContainer.appendChild(item);
+    }
+  }
+
+  if (inVar) {
+    const exitBtn = document.createElement('button');
+    exitBtn.type = 'button';
+    exitBtn.className = 'pgn-viewer-exit';
+    exitBtn.textContent = L.exitVariation;
+    exitBtn.addEventListener('click', exitVariation);
+    ravContainer.appendChild(exitBtn);
+  }
+}
+
+function formatMoveText(move) {
+  if (!move || !move.san) return '';
+  let t = '';
+  if (move.color === 'w' && move.moveNumber != null) t = move.moveNumber + '. ';
+  else if (move.color === 'b' && move.moveNumber != null) t = move.moveNumber + '... ';
+  t += move.san;
+  return t;
+}
+
+function buildMoveItem(move, key, clickData, currentKey, depth) {
+  const el = document.createElement('div');
+  el.className = 'pgn-viewer-move-item';
+  el.dataset.key = key;
+  el.dataset.depth = String(depth);
+  el.textContent = formatMoveText(move);
+  if (key === currentKey) el.classList.add('active');
+  el.addEventListener('click', function () {
+    if (clickData.type === 'mainline') jumpToMainline(clickData.idx);
+    else jumpToVariation(clickData.path, clickData.varPos);
+  });
+  return el;
+}
+
+function renderMoveSequence(moves, parentPath, depth, frag, currentKey) {
+  if (depth > MAX_VARIATION_DEPTH) return;
+  if (!Array.isArray(moves)) return;
+
+  for (let i = 0; i < moves.length; i++) {
+    const m = moves[i];
+    if (!m) continue;
+
+    let key, clickData;
+    if (depth === 0) {
+      key = 'main:' + (i + 1);
+      clickData = { type: 'mainline', idx: i + 1 };
     } else {
-      result = buildFenAtPath(game, state.variationPath, state.variationPos);
+      key = 'var:' + JSON.stringify(parentPath) + ':' + (i + 1);
+      clickData = { type: 'variation', path: parentPath, varPos: i + 1 };
     }
 
-    const boardEl = document.getElementById('board');
-    if (result.fen && boardEl) {
-      try {
-        renderBoard(boardEl, result.fen);
-      } catch (e) {
-        setStatus('renderBoard error: ' + (e && e.message ? e.message : String(e)), true);
-        updateCounter();
-        updateButtons();
-        renderRav();
-        return;
+    frag.appendChild(buildMoveItem(m, key, clickData, currentKey, depth));
+
+    if (Array.isArray(m.variations) && m.variations.length && depth < MAX_VARIATION_DEPTH) {
+      for (let vi = 0; vi < m.variations.length; vi++) {
+        const newPath = parentPath.concat([{ moveIdx: i, varIdx: vi }]);
+        renderMoveSequence(m.variations[vi], newPath, depth + 1, frag, currentKey);
       }
     }
-    if (result.error) setStatus(result.error, true);
-    else setStatus('', false);
+  }
+}
+
+function renderMoveList() {
+  moveListContainer.innerHTML = '';
+  if (state.selectedIdx < 0) return;
+  const game = state.games[state.selectedIdx];
+  if (!game || !Array.isArray(game.moves)) return;
+
+  const currentKey = getCurrentHighlightKey();
+  const frag = document.createDocumentFragment();
+
+  renderMoveSequence(game.moves, [], 0, frag, currentKey);
+  moveListContainer.appendChild(frag);
+}
+
+function jumpToMainline(idx) {
+  if (state.selectedIdx < 0) return;
+  const game = state.games[state.selectedIdx];
+  if (!game) return;
+  const total = Array.isArray(game.moves) ? game.moves.length : 0;
+  if (!Number.isInteger(idx) || idx < 0 || idx > total) return;
+  state.variationPath = [];
+  state.variationPos = 0;
+  state.moveIdx = idx;
+  renderCurrent();
+}
+
+function jumpToVariation(path, varPos) {
+  if (state.selectedIdx < 0) return;
+  const game = state.games[state.selectedIdx];
+  if (!game) return;
+
+  const check = validateVariationPath(game, path, varPos);
+  if (!check.valid) return;
+
+  state.variationPath = path.map(function (s) {
+    return { moveIdx: s.moveIdx, varIdx: s.varIdx };
+  });
+  state.variationPos = varPos;
+  renderCurrent();
+}
+
+function renderCurrent() {
+  if (state.selectedIdx < 0) {
     updateCounter();
     updateButtons();
     renderRav();
+    renderMoveList();
+    return;
+  }
+  const game = state.games[state.selectedIdx];
+  if (!game) {
+    updateCounter();
+    updateButtons();
+    renderRav();
+    renderMoveList();
+    return;
   }
 
-  // --- Variation enter/exit ---
-  // enterVariation pushes the ANCHOR INDEX (getAnchorIndex()) so buildFenAtPath
-  // enters the correct variation list. This aligns with renderRav's anchor.
+  let result;
+  if (state.variationPath.length === 0) {
+    result = buildFenAt(game, state.moveIdx);
+  } else {
+    result = buildFenAtPath(game, state.variationPath, state.variationPos);
+  }
 
-  function enterVariation(varIdx) {
-    if (state.selectedIdx < 0) return;
-    const inVar = state.variationPath.length > 0;
-    const currentList = inVar
-      ? getCurrentList()
-      : (Array.isArray(state.games[state.selectedIdx].moves)
-          ? state.games[state.selectedIdx].moves
-          : []);
-    const anchorIdx = getAnchorIndex();
-    if (anchorIdx < 0 || anchorIdx >= currentList.length) return;
-
-    const anchorMove = currentList[anchorIdx];
-    if (!anchorMove || !Array.isArray(anchorMove.variations) ||
-        !anchorMove.variations[varIdx]) return;
-
-    if (state.variationPath.length >= MAX_VARIATION_DEPTH) {
-      setStatus(L.maxDepth, true);
+  const boardEl = document.getElementById('board');
+  if (result.fen && boardEl) {
+    try {
+      renderBoard(boardEl, result.fen);
+    } catch (e) {
+      setStatus('renderBoard error: ' + (e && e.message ? e.message : String(e)), true);
+      updateCounter();
+      updateButtons();
+      renderRav();
+      renderMoveList();
       return;
     }
+  }
+  if (result.error) setStatus(result.error, true);
+  else setStatus('', false);
+  updateCounter();
+  updateButtons();
+  renderRav();
+  renderMoveList();
+}
 
-    state.variationPath.push({ moveIdx: anchorIdx, varIdx: varIdx });
-    state.variationPos = 1;
-    renderCurrent();
+function enterVariation(varIdx) {
+  if (state.selectedIdx < 0) return;
+  const inVar = state.variationPath.length > 0;
+  const currentList = inVar
+    ? getCurrentList()
+    : (Array.isArray(state.games[state.selectedIdx].moves)
+        ? state.games[state.selectedIdx].moves
+        : []);
+  const anchorIdx = getAnchorIndex();
+  if (anchorIdx < 0 || anchorIdx >= currentList.length) return;
+
+  const anchorMove = currentList[anchorIdx];
+  if (!anchorMove || !Array.isArray(anchorMove.variations) ||
+      !anchorMove.variations[varIdx]) return;
+
+  if (state.variationPath.length >= MAX_VARIATION_DEPTH) {
+    setStatus(L.maxDepth, true);
+    return;
   }
 
-  function exitVariation() {
-    if (state.variationPath.length === 0) return;
-    const lastStep = state.variationPath.pop();
-    if (state.variationPath.length === 0) {
-      // back to mainline — restore position where we entered
-      state.moveIdx = lastStep.moveIdx;
-      state.variationPos = 0;
-    } else {
-      // back to parent variation — restore parent's variationPos
-      state.variationPos = lastStep.moveIdx + 1;
-    }
-    renderCurrent();
-  }
+  state.variationPath.push({ moveIdx: anchorIdx, varIdx: varIdx });
+  state.variationPos = 1;
+  renderCurrent();
+}
 
+function exitVariation() {
+  if (state.variationPath.length === 0) return;
+  const lastStep = state.variationPath.pop();
+  if (state.variationPath.length === 0) {
+    state.moveIdx = lastStep.moveIdx;
+    state.variationPos = 0;
+  } else {
+    state.variationPos = lastStep.moveIdx + 1;
+  }
+  renderCurrent();
+}
+
+// === PART C ဒီကနေ ဆက် ===
   function buildSelectOptions() {
     select.innerHTML = '';
     if (!state.games.length) {
@@ -501,8 +619,6 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
     }
     renderCurrent();
   }
-
-  // --- EVENTS (M5 mainline + M7 variation) ---
 
   select.addEventListener('change', () => {
     const idx = parseInt(select.value, 10);
@@ -551,8 +667,6 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
     renderCurrent();
   });
 
-  // --- PUBLIC HANDLE ---
-
   function refresh() {
     const games = getGames();
     state.games = Array.isArray(games) ? games : [];
@@ -566,6 +680,7 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
       updateCounter();
       updateButtons();
       renderRav();
+      renderMoveList();
       setStatus('', false);
     } else {
       select.value = '0';
