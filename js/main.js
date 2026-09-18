@@ -33,7 +33,6 @@ if (Parser) {
   uiHandle = initPgnUI({
     parseAndMap: (text) => parseAndMap(Parser, text),
     toPGN,
-    // M6 (F1): viewer refresh on successful import
     onImport: () => {
       if (viewerHandle && typeof viewerHandle.refresh === 'function') {
         viewerHandle.refresh();
