@@ -3,7 +3,8 @@
 // No external dependencies.
 //
 // NOTE: M4 v1 minimal UI. Board update from imported game — deferred.
-// Signature chosen: initPgnUI({ parseAndMap, toPGN }) — per G6 Step 5.
+// Signature: initPgnUI({ parseAndMap, toPGN, onImport })
+//   F1 (M6): onImport callback — added for post-import viewer refresh.
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 
@@ -44,7 +45,7 @@ function injectStylesOnce() {
   document.head.appendChild(style);
 }
 
-export function initPgnUI({ parseAndMap, toPGN }) {
+export function initPgnUI({ parseAndMap, toPGN, onImport }) {
   if (typeof parseAndMap !== 'function' || typeof toPGN !== 'function') {
     console.warn('[M4] initPgnUI requires { parseAndMap, toPGN }');
     return null;
@@ -116,6 +117,10 @@ export function initPgnUI({ parseAndMap, toPGN }) {
       status.textContent = games.length
         ? L.statusLoaded(games.length)
         : L.statusNoGames;
+      // F1 (M6): notify listener (viewer refresh) — success path only
+      if (typeof onImport === 'function') {
+        try { onImport(games); } catch (_) { /* swallow */ }
+      }
     } catch (e) {
       state.games = [];
       state.lastPgnText = '';
