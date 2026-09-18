@@ -145,3 +145,58 @@ p {
   word-break: break-all;
   margin: 12px 0;
 }
+
+/* ============================================================
+   M7 — RAV (Variations) Styling
+   ============================================================ */
+
+.pgn-viewer-rav {
+  display: none;
+  margin: 8px 0;
+  padding: 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.pgn-viewer-rav.active {
+  display: block;
+}
+
+.pgn-viewer-rav-header {
+  font-size: 0.85em;
+  color: #555;
+  margin: 0 0 6px 0;
+  font-weight: 600;
+}
+
+.pgn-viewer-rav-item {
+  padding: 5px 8px;
+  margin: 2px 0;
+  font-family: monospace;
+  font-size: 0.9em;
+  cursor: pointer;
+  border-radius: 3px;
+  word-break: break-word;
+}
+
+.pgn-viewer-rav-item:hover {
+  background: #e0e0e0;
+}
+
+.pgn-viewer-rav-item[data-depth="1"] {
+  padding-left: 16px;
+}
+
+.pgn-viewer-rav-item[data-depth="2"] {
+  padding-left: 32px;
+}
+
+.pgn-viewer-rav-item[data-depth="3"] {
+  padding-left: 48px;
+}
+
+.pgn-viewer-exit {
+  margin-top: 8px;
+  font-size: 0.9em;
+  padding: 5px 10px;
+}
