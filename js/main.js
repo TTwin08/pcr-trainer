@@ -2,6 +2,7 @@
 // Architecture: index.html → main.js → { chess.js, board.js, i18n.js,
 //   pgn-model.js, pgn-ui.js, pgn-viewer.js }
 // Scope: M1+M2+M3+M4+M5 (PGN import/export + viewer navigation)
+// M6 (F1): post-import viewer refresh — onImport callback wiring
 
 import { Chess } from '../lib/chess.js';
 import { renderBoard, parseFen } from './board.js';
@@ -17,15 +18,27 @@ document.getElementById('title').textContent = t('title');
 document.getElementById('subtitle').textContent = t('subtitle');
 
 // ============================================================
+// Shared handles (pre-declared for TDZ safety)
+// M4 onImport callback needs to reference viewerHandle
+// ============================================================
+let uiHandle = null;
+let viewerHandle = null;
+
+// ============================================================
 // M4 — Initialize PGN UI (parser accessed via window.PgnParser)
 // NOTE: index.html must load ./lib/pgn-parser.umd.js BEFORE this module
 // ============================================================
 const Parser = window.PgnParser;
-let uiHandle = null;
 if (Parser) {
   uiHandle = initPgnUI({
     parseAndMap: (text) => parseAndMap(Parser, text),
     toPGN,
+    // M6 (F1): viewer refresh on successful import
+    onImport: () => {
+      if (viewerHandle && typeof viewerHandle.refresh === 'function') {
+        viewerHandle.refresh();
+      }
+    },
   });
 } else {
   console.warn('[M4] window.PgnParser not available');
@@ -35,7 +48,7 @@ if (Parser) {
 // M5 — Initialize PGN viewer (navigation + board driver)
 // Wires M4 getGames + M2 renderBoard + M1 Chess
 // ============================================================
-const viewerHandle = initPgnViewer({
+viewerHandle = initPgnViewer({
   getGames: () => (uiHandle && typeof uiHandle.getGames === 'function')
     ? uiHandle.getGames()
     : [],
