@@ -1,15 +1,15 @@
-// PCR Trainer — M3 i18n Module
+// PCR Trainer — M6.2 i18n Module
 // Hand-written EN/MY dictionary. No external dependency.
-// Scope: M3 static UI labels only (no chess/data text).
+// Scope: static UI labels only (no chess/data text).
 
 const dict = {
   en: {
     title: 'PCR Trainer',
-    subtitle: 'M3 — Burmese Font + UI Labels (Localization Foundation)',
+    subtitle: 'M6 — Post-Import Viewer Refresh',
   },
   my: {
     title: 'PCR Trainer',
-    subtitle: 'M3 — မြန်မာဖောင့်နှင့် UI စာသား',
+    subtitle: 'M6 — PGN Import ပြီးနောက် Viewer Refresh',
   },
 };
 
