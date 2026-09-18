@@ -19,7 +19,10 @@
   <!-- FEN display (NOT translated — technical notation) -->
   <p id="fen" class="fen-display"></p>
 
-  <!-- ONLY main.js loaded. main.js imports board.js + i18n.js + chess.js -->
+  <!-- M4: UMD parser (loads before module) -->
+  <script src="./lib/pgn-parser.umd.js"></script>
+
+  <!-- M1/M2/M3 chain — unchanged -->
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
