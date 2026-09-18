@@ -1,12 +1,14 @@
-// PCR Trainer — M3 Main Entry
-// Architecture: index.html → main.js → { chess.js, board.js, i18n.js }
-// Scope: M3 only (Burmese labels; no engine/PGN/training)
+// PCR Trainer — M5 Main Entry
+// Architecture: index.html → main.js → { chess.js, board.js, i18n.js,
+//   pgn-model.js, pgn-ui.js, pgn-viewer.js }
+// Scope: M1+M2+M3+M4+M5 (PGN import/export + viewer navigation)
 
 import { Chess } from '../lib/chess.js';
 import { renderBoard, parseFen } from './board.js';
 import { t } from './i18n.js';
 import { parseAndMap, toPGN } from './pgn-model.js';
 import { initPgnUI } from './pgn-ui.js';
+import { initPgnViewer } from './pgn-viewer.js';
 
 // ============================================================
 // M3 — Apply i18n labels
@@ -19,13 +21,29 @@ document.getElementById('subtitle').textContent = t('subtitle');
 // NOTE: index.html must load ./lib/pgn-parser.umd.js BEFORE this module
 // ============================================================
 const Parser = window.PgnParser;
+let uiHandle = null;
 if (Parser) {
-  initPgnUI({
+  uiHandle = initPgnUI({
     parseAndMap: (text) => parseAndMap(Parser, text),
     toPGN,
   });
 } else {
   console.warn('[M4] window.PgnParser not available');
+}
+
+// ============================================================
+// M5 — Initialize PGN viewer (navigation + board driver)
+// Wires M4 getGames + M2 renderBoard + M1 Chess
+// ============================================================
+const viewerHandle = initPgnViewer({
+  getGames: () => (uiHandle && typeof uiHandle.getGames === 'function')
+    ? uiHandle.getGames()
+    : [],
+  renderBoard,
+  Chess,
+});
+if (viewerHandle && typeof viewerHandle.refresh === 'function') {
+  viewerHandle.refresh();
 }
 
 // ============================================================
