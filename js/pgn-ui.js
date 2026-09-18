@@ -89,15 +89,12 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
   container.appendChild(status);
   container.appendChild(fileInput);
 
-  // Insert before #board if present; otherwise append to body
   const boardEl = document.getElementById('board');
   if (boardEl && boardEl.parentNode) {
     boardEl.parentNode.insertBefore(container, boardEl);
   } else {
     document.body.appendChild(container);
   }
-
-  // --- Handlers ---
 
   importBtn.addEventListener('click', () => {
     fileInput.click();
@@ -117,7 +114,6 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
       status.textContent = games.length
         ? L.statusLoaded(games.length)
         : L.statusNoGames;
-      // F1 (M6): notify listener (viewer refresh) — success path only
       if (typeof onImport === 'function') {
         try { onImport(games); } catch (_) { /* swallow */ }
       }
@@ -143,7 +139,6 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
       );
       return;
     }
-    // Download via Blob
     try {
       const blob = new Blob([pgnText], { type: 'application/x-chess-pgn' });
       const url = URL.createObjectURL(blob);
@@ -155,9 +150,8 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
-      // ignore — clipboard fallback below
+      /* ignore — clipboard fallback below */
     }
-    // Best-effort clipboard copy
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
       navigator.clipboard.writeText(pgnText).catch(() => {});
     }
