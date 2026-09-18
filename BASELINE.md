@@ -384,3 +384,83 @@ index.html → [UMD parser] → [main.js module]
 
 ---
 
+---
+
+## M5 — Board Update from Imported PGN
+
+**App Version:** 0.5.0
+**Tag:** baseline/m5-pass
+**Entry Baseline:** baseline/m4-pass (0742814)
+**Date:** 2026-09-18
+
+### Deliverables
+
+| File | Type | Size | Notes |
+|---|---|---|---|
+| `js/pgn-viewer.js` | NEW | 314 lines | Navigation + board driver |
+| `js/main.js` | UPDATE | +1 import, +M5 block, +1 M4 line change | See "M4 Block Change" |
+| `index.html` | UPDATE | +#pgn-viewer div, duplicate fix | See "index.html Fix" |
+
+### Architecture (M5)
+
+index.html → [UMD parser] → [main.js module]
+  main.js → M1 (chess.js) + M2 (board.js) + M3 (i18n.js)
+  main.js → M4 (pgn-model.js + pgn-ui.js)
+  main.js → M5 (pgn-viewer.js) ← NEW
+
+### Capability Ownership
+
+- `js/pgn-model.js` (M4) — authoritative PCR game model — UNCHANGED
+- `chess.js v1.4.0` (M1) — legality + FEN — UNCHANGED
+- `js/board.js` (M2) — renderBoard(container, fen) — UNCHANGED
+- `js/pgn-ui.js` (M4) — Import/Export — UNCHANGED
+- `js/pgn-viewer.js` (M5) — NEW — navigation + board driver
+- `js/main.js` (M5) — wires viewer (additive)
+- `index.html` (M5) — viewer container (additive)
+
+### Test Results — T1–T7 + T9: 9/9 PASS
+
+| Test | Result | Detail |
+|---|---|---|
+| T1 | ✅ PASS | Game list renders |
+| T2 | ✅ PASS | Initial position (moveIdx=0) |
+| T3 | ✅ PASS | Next → moveIdx 0→1 |
+| T4 | ✅ PASS | Prev → moveIdx 3→2 |
+| T5 | ✅ PASS | Final → moveIdx=6 |
+| T6 | ✅ PASS | FEN/SetUp starts from FEN |
+| T7 | ✅ PASS | Invalid move → graceful error |
+| T9a | ✅ PASS | REF-1 per-ply FEN (7/7) |
+| T9b | ✅ PASS | REF-2 per-ply FEN (3/3) |
+
+**Evidence:** Screenshots + console output captured.
+
+### T9 — Independent FEN Verification
+
+Expected FENs from **PO-run chess.js v1.4.0** (Step 5 generator).
+Not AI-generated. Independent reference source.
+
+- REF-1: mainline (Ruy Lopez, 6 plies) — 7 FENs
+- REF-2: FEN/SetUp start (e4 position, 2 plies) — 3 FENs
+
+### Fixes During Implementation
+
+**Fix A — `js/pgn-viewer.js` moveIdx semantics**
+- Bug: moveIdx range `-1..N` caused off-by-one (state `-1` and `0` duplicate)
+- Fix: moveIdx range `0..N` (0 = initial, N = final)
+- Verified: T3 (Next) + T9 (per-ply) now PASS
+
+**Fix B — `test-m5-verify.html` expected values**
+- Issue: PGN tag FEN (`... e3 0 1`) differs from chess.js normalized output (`... - 0 1`)
+- Cause: chess.js v1.4.0 normalizes en passant square when not capturable
+- Fix: expected value updated to match chess.js output
+
+### M4 Block Change (Honest Note)
+
+**`js/main.js` M4 block — 1 line change:**
+```diff
+- initPgnUI({
++ const uiHandle = initPgnUI({
+    parseAndMap: (text) => parseAndMap(Parser, text),
+    toPGN,
+  });
+
