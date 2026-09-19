@@ -2,6 +2,7 @@
 // M5: mainline navigation (moveIdx: 0..N)
 // M7: RAV variations tree display (inline, depth-capped at 3)
 // M8: Move list (mainline + nested variations, click to jump)
+// M9: Keyboard (← → ↑ ↓) + Slider mainline navigation
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 const MAX_VARIATION_DEPTH = 3;
@@ -63,7 +64,6 @@ function injectStylesOnce() {
   ].join('\n');
   document.head.appendChild(style);
 }
-
 export function initPgnViewer({ getGames, renderBoard, Chess }) {
   if (typeof getGames !== 'function') throw new Error('initPgnViewer: getGames required');
   if (typeof renderBoard !== 'function') throw new Error('initPgnViewer: renderBoard required');
@@ -129,6 +129,16 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   moveListContainer.className = 'pgn-viewer-move-list';
   moveListContainer.id = 'pgn-viewer-move-list';
 
+  // M9 (T1): slider element (A4 — after Move List, before status)
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.id = 'pgn-viewer-slider';
+  slider.className = 'pgn-viewer-slider';
+  slider.min = '0';
+  slider.max = '0';
+  slider.value = '0';
+  slider.disabled = true;
+
   const status = document.createElement('p');
   status.className = 'pgn-viewer-status';
   status.id = 'pgn-viewer-status';
@@ -139,9 +149,14 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   container.appendChild(counter);
   container.appendChild(ravContainer);
   container.appendChild(moveListContainer);
+  container.appendChild(slider);   // M9 (T1): A4 placement
   container.appendChild(status);
 
-  // === PART B ဒီကနေ ဆက် ===
+  // M9 (T4): slider input → mainline jump (reuse M8 jumpToMainline)
+  slider.addEventListener('input', function (e) {
+    const v = parseInt(e.target.value, 10);
+    if (Number.isInteger(v)) jumpToMainline(v);
+  });
 // --- LOGIC (pure) ---
 
 function computeStartFen(game) {
@@ -300,7 +315,6 @@ function validateVariationPath(game, path, varPos) {
 
   return { valid: true, list: list };
 }
-
 function getCurrentHighlightKey() {
   if (state.selectedIdx < 0) return null;
   if (state.variationPath.length === 0) return 'main:' + state.moveIdx;
@@ -349,6 +363,16 @@ function updateButtons() {
   btnPrev.disabled  = !hasGame || state.moveIdx <= 0;
   btnNext.disabled  = !hasGame || state.moveIdx >= state.totalMoves;
   btnFinal.disabled = !hasGame || state.moveIdx >= state.totalMoves;
+}
+
+// M9 (T2): sync slider with mainline state (disabled in variation)
+function updateSlider() {
+  if (!slider) return;
+  const hasGame = state.selectedIdx >= 0;
+  const inVar = state.variationPath.length > 0;
+  slider.max = String(state.totalMoves);
+  slider.value = String(state.moveIdx);
+  slider.disabled = !hasGame || inVar;
 }
 
 function renderRav() {
@@ -471,7 +495,6 @@ function renderMoveList() {
   renderMoveSequence(game.moves, [], 0, frag, currentKey);
   moveListContainer.appendChild(frag);
 }
-
 function jumpToMainline(idx) {
   if (state.selectedIdx < 0) return;
   const game = state.games[state.selectedIdx];
@@ -503,6 +526,7 @@ function renderCurrent() {
   if (state.selectedIdx < 0) {
     updateCounter();
     updateButtons();
+    updateSlider();
     renderRav();
     renderMoveList();
     return;
@@ -511,6 +535,7 @@ function renderCurrent() {
   if (!game) {
     updateCounter();
     updateButtons();
+    updateSlider();
     renderRav();
     renderMoveList();
     return;
@@ -531,6 +556,7 @@ function renderCurrent() {
       setStatus('renderBoard error: ' + (e && e.message ? e.message : String(e)), true);
       updateCounter();
       updateButtons();
+      updateSlider();
       renderRav();
       renderMoveList();
       return;
@@ -540,6 +566,7 @@ function renderCurrent() {
   else setStatus('', false);
   updateCounter();
   updateButtons();
+  updateSlider();
   renderRav();
   renderMoveList();
 }
@@ -581,7 +608,30 @@ function exitVariation() {
   renderCurrent();
 }
 
-// === PART C ဒီကနေ ဆက် ===
+// M9 (B1): named prev/next for keyboard reuse — mirrors M8 inline handlers
+function stepPrev() {
+  if (state.variationPath.length > 0) {
+    if (state.variationPos > 0) {
+      state.variationPos -= 1;
+      renderCurrent();
+    } else {
+      exitVariation();
+    }
+    return;
+  }
+  if (state.moveIdx > 0) state.moveIdx -= 1;
+  renderCurrent();
+}
+
+function stepNext() {
+  if (state.variationPath.length > 0) {
+    const N = getCurrentList().length;
+    if (state.variationPos < N) state.variationPos += 1;
+  } else {
+    if (state.moveIdx < state.totalMoves) state.moveIdx += 1;
+  }
+  renderCurrent();
+}
   function buildSelectOptions() {
     select.innerHTML = '';
     if (!state.games.length) {
@@ -679,6 +729,7 @@ function exitVariation() {
       state.variationPos = 0;
       updateCounter();
       updateButtons();
+      updateSlider();
       renderRav();
       renderMoveList();
       setStatus('', false);
@@ -705,6 +756,37 @@ function exitVariation() {
       variationPos: state.variationPos,
     };
   }
+
+  // M9 (T6): focus guard — do not intercept keys in editable elements
+  function isEditableFocused() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  // M9 (T5/T7): document-level keyboard navigation
+  function onKeyDown(e) {
+    if (isEditableFocused()) return;
+    const key = e.key;
+    if (key === 'ArrowLeft') {
+      e.preventDefault();
+      stepPrev();
+    } else if (key === 'ArrowRight') {
+      e.preventDefault();
+      stepNext();
+    } else if (key === 'ArrowUp') {
+      e.preventDefault();
+      exitVariation();
+    } else if (key === 'ArrowDown') {
+      e.preventDefault();
+      enterVariation(0);
+    }
+  }
+
+  document.addEventListener('keydown', onKeyDown);
 
   refresh();
 
