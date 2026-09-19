@@ -329,3 +329,48 @@ p {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   M10 — PGN Metadata UI
+   ============================================================ */
+
+.pgn-viewer-meta {
+  display: block;
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.pgn-viewer-meta.hidden {
+  display: none;
+}
+
+.pgn-viewer-meta-header {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: #555;
+  margin: 0 0 6px 0;
+}
+
+.pgn-viewer-meta-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.pgn-viewer-meta-label {
+  font-weight: 600;
+  min-width: 72px;
+  color: #444;
+  flex-shrink: 0;
+}
+
+.pgn-viewer-meta-value {
+  color: #222;
+  font-family: monospace;
+  word-break: break-all;
+}
