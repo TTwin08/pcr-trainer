@@ -2,9 +2,8 @@
 // Local-only processing: File API + Blob + Clipboard. No network calls.
 // No external dependencies.
 //
-// NOTE: M4 v1 minimal UI. Board update from imported game — deferred.
-// Signature: initPgnUI({ parseAndMap, toPGN, onImport })
-//   F1 (M6): onImport callback — added for post-import viewer refresh.
+// M11 — LocalStorage seed (initialGames) + Clear button (onClear, Law 4)
+// Signature: initPgnUI({ parseAndMap, toPGN, initialGames, onImport, onClear })
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 
@@ -12,22 +11,28 @@ const LABELS = {
   en: {
     importBtn: 'Import PGN',
     exportBtn: 'Export PGN',
+    clearBtn: 'Clear',
     statusParsing: 'Parsing...',
     statusLoaded: (n) => n + ' game(s) loaded',
     statusParseError: (m) => 'Error: ' + m,
     statusNoGames: 'No games loaded',
     statusExported: 'Exported (check Downloads)',
     statusNoParser: 'Parser not available',
+    statusCleared: 'Cleared',
+    confirmClear: 'Clear all loaded games? This cannot be undone.',
   },
   my: {
     importBtn: 'PGN ဖွင့်ရန်',
     exportBtn: 'PGN သိမ်းရန်',
+    clearBtn: 'ရှင်းလင်း',
     statusParsing: 'ဖတ်နေသည်...',
     statusLoaded: (n) => 'ဂိမ်း ' + n + ' ခု ရရှိပြီ',
     statusParseError: (m) => 'အမှား: ' + m,
     statusNoGames: 'ဂိမ်း မရှိသေးပါ',
     statusExported: 'သိမ်းပြီးပါပြီ (Downloads ကို စစ်ပါ)',
     statusNoParser: 'Parser မရရှိပါ',
+    statusCleared: 'ရှင်းလင်းပြီး',
+    confirmClear: 'ဂိမ်းအားလုံး ရှင်းလင်းမလား? ပြန်ယူလို့ မရပါ။',
   },
 };
 
@@ -45,14 +50,17 @@ function injectStylesOnce() {
   document.head.appendChild(style);
 }
 
-export function initPgnUI({ parseAndMap, toPGN, onImport }) {
+export function initPgnUI({ parseAndMap, toPGN, initialGames, onImport, onClear }) {
   if (typeof parseAndMap !== 'function' || typeof toPGN !== 'function') {
     console.warn('[M4] initPgnUI requires { parseAndMap, toPGN }');
     return null;
   }
 
+  // M11 — seed from storage (defensive copy)
+  const seed = Array.isArray(initialGames) ? initialGames : [];
+
   const state = {
-    games: [],
+    games: seed.slice(),
     lastPgnText: '',
   };
 
@@ -71,7 +79,12 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
   exportBtn.type = 'button';
   exportBtn.id = 'pgn-export-btn';
   exportBtn.textContent = L.exportBtn;
-  exportBtn.disabled = true;
+
+  // M11 — Clear button (Law 4: destructive op requires confirm)
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.id = 'pgn-clear-btn';
+  clearBtn.textContent = L.clearBtn;
 
   const status = document.createElement('p');
   status.id = 'pgn-status';
@@ -86,15 +99,30 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
 
   container.appendChild(importBtn);
   container.appendChild(exportBtn);
+  container.appendChild(clearBtn);
   container.appendChild(status);
   container.appendChild(fileInput);
 
+  // Insert before #board if present; otherwise append to body
   const boardEl = document.getElementById('board');
   if (boardEl && boardEl.parentNode) {
     boardEl.parentNode.insertBefore(container, boardEl);
   } else {
     document.body.appendChild(container);
   }
+
+  // --- M11: derived button state (from seed) ---
+  function syncButtons() {
+    const hasGames = state.games.length > 0;
+    exportBtn.disabled = !hasGames;
+    clearBtn.disabled = !hasGames;
+  }
+  syncButtons();
+  if (seed.length) {
+    status.textContent = L.statusLoaded(seed.length);
+  }
+
+  // --- Handlers ---
 
   importBtn.addEventListener('click', () => {
     fileInput.click();
@@ -110,17 +138,18 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
       const games = Array.isArray(result) ? result : [];
       state.games = games;
       state.lastPgnText = text;
-      exportBtn.disabled = games.length === 0;
+      syncButtons();
       status.textContent = games.length
         ? L.statusLoaded(games.length)
         : L.statusNoGames;
+      // F1 (M6) + M11: notify listener (save + viewer refresh) — success only
       if (typeof onImport === 'function') {
         try { onImport(games); } catch (_) { /* swallow */ }
       }
     } catch (e) {
-      state.games = [];
-      state.lastPgnText = '';
-      exportBtn.disabled = true;
+      // M11 (Law 4): parse failure — preserve current state + storage.
+      // Only update status. Do NOT touch state.games / lastPgnText /
+      // buttons / viewer. Last-good data remains consistent everywhere.
       status.textContent = L.statusParseError(
         (e && e.message) ? e.message : String(e)
       );
@@ -139,6 +168,7 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
       );
       return;
     }
+    // Download via Blob
     try {
       const blob = new Blob([pgnText], { type: 'application/x-chess-pgn' });
       const url = URL.createObjectURL(blob);
@@ -150,12 +180,27 @@ export function initPgnUI({ parseAndMap, toPGN, onImport }) {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
-      /* ignore — clipboard fallback below */
+      // ignore — clipboard fallback below
     }
+    // Best-effort clipboard copy
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
       navigator.clipboard.writeText(pgnText).catch(() => {});
     }
     status.textContent = L.statusExported;
+  });
+
+  // M11 — Clear handler (Law 4: confirm → wipe → notify)
+  clearBtn.addEventListener('click', () => {
+    if (!state.games.length) return;
+    const ok = window.confirm(L.confirmClear);
+    if (!ok) return;
+    state.games = [];
+    state.lastPgnText = '';
+    syncButtons();
+    status.textContent = L.statusCleared;
+    if (typeof onClear === 'function') {
+      try { onClear(); } catch (_) { /* swallow */ }
+    }
   });
 
   return {
