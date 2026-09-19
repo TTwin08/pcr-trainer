@@ -3,6 +3,7 @@
 //   pgn-model.js, pgn-ui.js, pgn-viewer.js }
 // Scope: M1+M2+M3+M4+M5 (PGN import/export + viewer navigation)
 // M6 (F1): post-import viewer refresh — onImport callback wiring
+// M11: LocalStorage persistence — load/save/clear (pcr-trainer:games)
 
 import { Chess } from '../lib/chess.js';
 import { renderBoard, parseFen } from './board.js';
@@ -18,6 +19,52 @@ document.getElementById('title').textContent = t('title');
 document.getElementById('subtitle').textContent = t('subtitle');
 
 // ============================================================
+// M11 — LocalStorage persistence helpers
+// Key: pcr-trainer:games · Value: { version, games, savedAt }
+// ============================================================
+const STORAGE_KEY = 'pcr-trainer:games';
+const STORAGE_VERSION = 1;
+
+function loadFromStorage() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return [];
+    if (parsed.version !== STORAGE_VERSION) {
+      console.warn('[M11] storage version mismatch:', parsed.version);
+      return [];
+    }
+    if (!Array.isArray(parsed.games)) return [];
+    return parsed.games;
+  } catch (err) {
+    console.warn('[M11] load failed:', err && err.message);
+    return [];
+  }
+}
+
+function saveToStorage(games) {
+  try {
+    const payload = {
+      version: STORAGE_VERSION,
+      games: Array.isArray(games) ? games : [],
+      savedAt: new Date().toISOString(),
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('[M11] save failed:', err && err.message);
+  }
+}
+
+function clearStorage() {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch (err) {
+    console.warn('[M11] clear failed:', err && err.message);
+  }
+}
+
+// ============================================================
 // Shared handles (pre-declared for TDZ safety)
 // M4 onImport callback needs to reference viewerHandle
 // ============================================================
@@ -27,13 +74,26 @@ let viewerHandle = null;
 // ============================================================
 // M4 — Initialize PGN UI (parser accessed via window.PgnParser)
 // NOTE: index.html must load ./lib/pgn-parser.umd.js BEFORE this module
+// M11: seed from storage · save on import · clear on user action
 // ============================================================
 const Parser = window.PgnParser;
+const initialGames = loadFromStorage();
+
 if (Parser) {
   uiHandle = initPgnUI({
     parseAndMap: (text) => parseAndMap(Parser, text),
     toPGN,
-    onImport: () => {
+    initialGames,
+    // M6 (F1) + M11: save on import success · viewer refresh
+    onImport: (games) => {
+      saveToStorage(games);
+      if (viewerHandle && typeof viewerHandle.refresh === 'function') {
+        viewerHandle.refresh();
+      }
+    },
+    // M11: user-initiated clear → wipe storage + viewer refresh
+    onClear: () => {
+      clearStorage();
       if (viewerHandle && typeof viewerHandle.refresh === 'function') {
         viewerHandle.refresh();
       }
