@@ -3,6 +3,7 @@
 // M7: RAV variations tree display (inline, depth-capped at 3)
 // M8: Move list (mainline + nested variations, click to jump)
 // M9: Keyboard (← → ↑ ↓) + Slider mainline navigation
+// M10: PGN metadata panel (read-only, Event/Site/Date/White/Black/Result/Round + conditional FEN)
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 const MAX_VARIATION_DEPTH = 3;
@@ -25,6 +26,16 @@ const LABELS = {
     maxDepth: 'Max variation depth (' + MAX_VARIATION_DEPTH + ') reached',
     variationCounter: (d, p, n) => 'Variation (depth-' + d + '): ' + p + ' / ' + n,
     invalidPath: 'Invalid variation path',
+    metaHeader: 'Game info',
+    metaEvent: 'Event',
+    metaSite: 'Site',
+    metaDate: 'Date',
+    metaWhite: 'White',
+    metaBlack: 'Black',
+    metaResult: 'Result',
+    metaRound: 'Round',
+    metaFen: 'FEN',
+    metaEmpty: '\u2014',
   },
   my: {
     selectLabel: 'ဂိမ်း ရွေးပါ',
@@ -43,6 +54,16 @@ const LABELS = {
     maxDepth: 'Variation depth အများဆုံး (' + MAX_VARIATION_DEPTH + ') ရောက်ပါပြီ',
     variationCounter: (d, p, n) => 'Variation (depth-' + d + '): ' + p + ' / ' + n,
     invalidPath: 'Variation လမ်းကြောင်း မမှန်',
+    metaHeader: 'ဂိမ်း အချက်အလက်',
+    metaEvent: 'ပြိုင်ပွဲ',
+    metaSite: 'နေရာ',
+    metaDate: 'ရက်စွဲ',
+    metaWhite: 'အဖြူ',
+    metaBlack: 'အမဲ',
+    metaResult: 'ရလဒ်',
+    metaRound: 'အဆင့်',
+    metaFen: 'FEN',
+    metaEmpty: '\u2014',
   },
 };
 
@@ -101,6 +122,11 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   selectLabel.appendChild(select);
   row1.appendChild(selectLabel);
 
+  // M10: metadata panel container (between row1 and row2)
+  const metaContainer = document.createElement('div');
+  metaContainer.className = 'pgn-viewer-meta hidden';
+  metaContainer.id = 'pgn-viewer-meta';
+
   const row2 = document.createElement('div');
   row2.className = 'pgn-viewer-row';
   const btnInit = document.createElement('button');
@@ -145,6 +171,7 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   status.textContent = '';
 
   container.appendChild(row1);
+  container.appendChild(metaContainer);   // M10: metadata panel
   container.appendChild(row2);
   container.appendChild(counter);
   container.appendChild(ravContainer);
@@ -375,6 +402,79 @@ function updateSlider() {
   slider.disabled = !hasGame || inVar;
 }
 
+// M10: render PGN metadata panel
+// Rows: Event · Site · Date · White · Black · Result · Round
+// Conditional: FEN (SetUp === '1' && FEN present) — last row
+function renderMetadata() {
+  if (!metaContainer) return;
+  metaContainer.innerHTML = '';
+
+  if (state.selectedIdx < 0) {
+    metaContainer.classList.add('hidden');
+    return;
+  }
+  const game = state.games[state.selectedIdx];
+  if (!game || !game.tags) {
+    metaContainer.classList.add('hidden');
+    return;
+  }
+  metaContainer.classList.remove('hidden');
+
+  const tags = game.tags;
+  const frag = document.createDocumentFragment();
+
+  const header = document.createElement('p');
+  header.className = 'pgn-viewer-meta-header';
+  header.textContent = L.metaHeader;
+  frag.appendChild(header);
+
+  const empty = L.metaEmpty;
+  const rows = [
+    { label: L.metaEvent,  key: 'Event'  },
+    { label: L.metaSite,   key: 'Site'   },
+    { label: L.metaDate,   key: 'Date'   },
+    { label: L.metaWhite,  key: 'White'  },
+    { label: L.metaBlack,  key: 'Black'  },
+    { label: L.metaResult, key: 'Result' },
+    { label: L.metaRound,  key: 'Round'  },
+  ];
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const raw = tags[r.key];
+    const val = (raw === undefined || raw === null || raw === '')
+      ? empty
+      : String(raw);
+    const row = document.createElement('div');
+    row.className = 'pgn-viewer-meta-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'pgn-viewer-meta-label';
+    lbl.textContent = r.label;
+    const v = document.createElement('span');
+    v.className = 'pgn-viewer-meta-value';
+    v.textContent = val;
+    row.appendChild(lbl);
+    row.appendChild(v);
+    frag.appendChild(row);
+  }
+
+  if (tags.SetUp === '1' && typeof tags.FEN === 'string' && tags.FEN.length) {
+    const fenRow = document.createElement('div');
+    fenRow.className = 'pgn-viewer-meta-row';
+    const fenLbl = document.createElement('span');
+    fenLbl.className = 'pgn-viewer-meta-label';
+    fenLbl.textContent = L.metaFen;
+    const fenVal = document.createElement('span');
+    fenVal.className = 'pgn-viewer-meta-value';
+    fenVal.textContent = tags.FEN;
+    fenRow.appendChild(fenLbl);
+    fenRow.appendChild(fenVal);
+    frag.appendChild(fenRow);
+  }
+
+  metaContainer.appendChild(frag);
+}
+
 function renderRav() {
   ravContainer.innerHTML = '';
 
@@ -527,6 +627,7 @@ function renderCurrent() {
     updateCounter();
     updateButtons();
     updateSlider();
+    renderMetadata();
     renderRav();
     renderMoveList();
     return;
@@ -536,6 +637,7 @@ function renderCurrent() {
     updateCounter();
     updateButtons();
     updateSlider();
+    renderMetadata();
     renderRav();
     renderMoveList();
     return;
@@ -557,6 +659,7 @@ function renderCurrent() {
       updateCounter();
       updateButtons();
       updateSlider();
+      renderMetadata();
       renderRav();
       renderMoveList();
       return;
@@ -567,6 +670,7 @@ function renderCurrent() {
   updateCounter();
   updateButtons();
   updateSlider();
+  renderMetadata();
   renderRav();
   renderMoveList();
 }
@@ -730,6 +834,7 @@ function stepNext() {
       updateCounter();
       updateButtons();
       updateSlider();
+      renderMetadata();
       renderRav();
       renderMoveList();
       setStatus('', false);
