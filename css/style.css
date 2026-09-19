@@ -313,3 +313,19 @@ p {
   background: #ffe082;
   font-weight: 600;
 }
+
+/* ============================================================
+   M9 — Keyboard/Slider Navigation Styling
+   ============================================================ */
+
+.pgn-viewer-slider {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  accent-color: #8a6d3b;
+}
+
+.pgn-viewer-slider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
