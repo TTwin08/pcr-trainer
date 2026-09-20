@@ -103,10 +103,10 @@ export function initPgnUI({ parseAndMap, toPGN, initialGames, onImport, onClear 
   container.appendChild(status);
   container.appendChild(fileInput);
 
-  // Insert before #board if present; otherwise append to body
-  const boardEl = document.getElementById('board');
-  if (boardEl && boardEl.parentNode) {
-    boardEl.parentNode.insertBefore(container, boardEl);
+  // Insert before #pgn-viewer if present; otherwise append to body
+  const pgnViewerEl = document.getElementById('pgn-viewer');
+  if (pgnViewerEl && pgnViewerEl.parentNode) {
+    pgnViewerEl.parentNode.insertBefore(container, pgnViewerEl);
   } else {
     document.body.appendChild(container);
   }
