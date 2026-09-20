@@ -777,4 +777,87 @@ DOM · chess.js (local) · pgn-parser (local UMD)
 4. M7 planning
 
 ---
+---
 
+## M12.1 — Board-first Study Mode layout
+
+**App Version:** UNKNOWN
+**Tag:** baseline/m12.1-pass
+**Entry Baseline:** baseline/m12-pass (1164dd7)
+**Date:** 2026-09-21
+
+### Deliverables
+
+| File | Type | Change | Commit |
+|---|---|---|---|
+| `index.html` | UPDATE | C1 — top-level DOM reorder | 1adee5c |
+| `js/pgn-ui.js` | UPDATE | C2 — insertion target change | ac79f45 |
+
+### Architecture (M12.1)
+
+Target top-level DOM order:
+`#title → #subtitle → #board → #fen → #output → #pgn-viewer`
+
+Runtime insertion (via `js/pgn-ui.js`):
+`#pgn-ui` inserted immediately before `#pgn-viewer`
+
+### Change Details
+
+**C1 — `index.html` (commit 1adee5c)**
+- Top-level DOM reorder only
+- `#board` + `#fen` moved above `#output` + `#pgn-viewer`
+- Target: `#title → #subtitle → #board → #fen → #output → #pgn-viewer`
+- No content / CSS / class / ID / script-tag change
+
+**C2 — `js/pgn-ui.js` (commit ac79f45)**
+- Insertion target change only
+- `insertBefore(#board)` → `insertBefore(#pgn-viewer)`
+- Container children / handlers / labels / fallback unchanged
+
+### Verification Evidence
+
+- G-VERIFY: PASS
+- Exact-match surfaces: 11/11 PASS
+- Verification surface: V1–V14 (per §13 protocol)
+- Runtime layout: confirmed board-first
+- Working tree: CLEAN
+
+### Commit Chain
+
+`1164dd7` (baseline/m12-pass) → `1adee5c` (C1) → `ac79f45` (C2)
+
+Current tag: `baseline/m12.1-pass` → `ac79f45`
+
+### Constraints Preserved
+
+- 🔒 M1–M12 baselines IMMUTABLE
+- 🔒 chess.js v1.4.0 exact
+- 🔒 @mliebelt/pgn-parser v1.4.19 only
+- 🔒 No new dependencies
+- 🔒 Local-only processing (no network/telemetry/analytics)
+- 🔒 C-14 unlock: single-shot · C1 + C2 only
+
+### Known UNKNOWN / DEFERRED / OUT-OF-SCOPE
+
+- **App Version:** UNKNOWN (not recorded)
+- **GAP-8 (numeric tolerance):** DEFERRED
+- **F-6 (scrollTop nondeterminism):** UNKNOWN
+- **F-1 (board ↔ FEN divergence):** OUT-OF-SCOPE
+- **N2 (board-top threshold):** DEFERRED
+- **Rollback UNKNOWNs** (T-2…T-5 · TR-1…TR-5 · R-1…R-4 · R-7): preserved
+- **"Latest" release label state:** UNKNOWN
+
+### Not Modified
+
+- `css/style.css` — unchanged
+- `js/main.js` — unchanged
+- `js/pgn-viewer.js` — unchanged
+- Other source files — unchanged
+- No new files · no deletions
+
+### Sign-off
+
+M12.1: Product Owner — 2026-09-21
+
+Constitution Ref: V3.0.0 FINAL
+Workflow Ref: v1.0 FINAL
