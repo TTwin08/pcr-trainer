@@ -5,6 +5,7 @@
 // M9: Keyboard (← → ↑ ↓) + Slider mainline navigation
 // M10: PGN metadata panel (read-only, Event/Site/Date/White/Black/Result/Round + conditional FEN)
 // M13: Move explanation region (read-only current-move comment + raw NAGs)
+// M14: Session-only editable comment (textarea) · NAG stays display-only
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 const MAX_VARIATION_DEPTH = 3;
@@ -87,8 +88,10 @@ const L = LABELS[LANG] || LABELS.en;function injectStylesOnce() {
     '.pgn-viewer .pgn-viewer-status.error { color: #b00; }',
     '.pgn-viewer .pgn-viewer-explanation { margin: 6px 0; padding: 6px 8px; background: #f6f6f6; border-radius: 4px; }',
     '.pgn-viewer .pgn-viewer-explanation-header { font-size: 0.85em; margin: 0 0 4px 0; opacity: 0.7; }',
-    '.pgn-viewer .pgn-viewer-explanation-comment { margin: 2px 0; font-size: 0.95em; }',
-    '.pgn-viewer .pgn-viewer-explanation-nags { margin: 2px 0; font-size: 0.9em; opacity: 0.75; }',
+    '.pgn-viewer .pgn-viewer-explanation-edit { width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; font-size: 0.95em; border: 1px solid #ccc; border-radius: 3px; background: #fff; resize: vertical; min-height: 2.2em; }',
+    '.pgn-viewer .pgn-viewer-explanation-edit:focus { outline: none; border-color: #4a90e2; }',
+    '.pgn-viewer .pgn-viewer-explanation-edit.dirty { border-color: #d18b00; background: #fffbea; }',
+    '.pgn-viewer .pgn-viewer-explanation-nags { margin: 4px 0 2px 0; font-size: 0.9em; opacity: 0.75; }',
     '.pgn-viewer .pgn-viewer-explanation-empty { margin: 2px 0; font-size: 0.9em; opacity: 0.6; font-style: italic; }',
   ].join('\n');
   document.head.appendChild(style);
@@ -109,6 +112,20 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
     variationPath: [],
     variationPos: 0,
   };
+
+  // M14 (PG-5): session-only per-move edit store (in-memory · not persisted)
+  const sessionEdits = new Map();
+
+  // M14: stable key for the currently displayed move (mainline or variation)
+  function getEditKey() {
+    if (state.selectedIdx < 0) return null;
+    if (state.variationPath.length === 0) {
+      if (state.moveIdx <= 0) return null;
+      return state.selectedIdx + '|main|' + state.moveIdx;
+    }
+    if (state.variationPos <= 0) return null;
+    return state.selectedIdx + '|var|' + JSON.stringify(state.variationPath) + '|' + state.variationPos;
+  }
 
   const container = document.getElementById('pgn-viewer');
   if (!container) {
@@ -155,7 +172,7 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   counter.id = 'pgn-move-counter';
   counter.textContent = '';
 
-  // M13 (PG-1 Variant A): read-only move explanation region
+  // M13 (PG-1): read-only move explanation region (M14: editable comment)
   const explanationContainer = document.createElement('div');
   explanationContainer.className = 'pgn-viewer-explanation';
   explanationContainer.id = 'pgn-viewer-explanation';
@@ -603,7 +620,7 @@ function renderMoveList() {
   moveListContainer.appendChild(frag);
 }
 
-// M13 (PG-1 Variant A): resolve currently highlighted move object.
+// M13 (PG-1): resolve currently highlighted move object.
 // Returns null for: no game, initial position (mainline or variation).
 function getCurrentMoveForExplanation() {
   if (state.selectedIdx < 0) return null;
@@ -621,7 +638,7 @@ function getCurrentMoveForExplanation() {
   return list[state.variationPos - 1];
 }
 
-// M13 (PG-1 Variant A): render current-move comment + raw NAGs (read-only).
+// M13 (PG-1) + M14 (PG-5): editable comment textarea + read-only NAG display
 function renderExplanation() {
   if (!explanationContainer) return;
   explanationContainer.innerHTML = '';
@@ -640,27 +657,40 @@ function renderExplanation() {
     return;
   }
 
-  const comment = (typeof move.comment === 'string' && move.comment.length)
-    ? move.comment
-    : '';
   const nags = Array.isArray(move.nags)
     ? move.nags.filter(function (n) { return typeof n === 'string' && n.length; })
     : [];
 
-  if (!comment && nags.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'pgn-viewer-explanation-empty';
-    empty.textContent = L.explanationEmpty;
-    explanationContainer.appendChild(empty);
-    return;
+  // M14 (PG-5): session-only editable textarea for comment
+  // - sessionEdits.has(key) takes precedence over move.comment (empty string is intentional)
+  // - move.comment is never mutated; toPGN() is unaffected
+  const key = getEditKey();
+  const edit = document.createElement('textarea');
+  edit.className = 'pgn-viewer-explanation-edit';
+  edit.rows = 2;
+  edit.placeholder = L.explanationEmpty;
+
+  let initialValue = '';
+  if (key && sessionEdits.has(key)) {
+    initialValue = sessionEdits.get(key);
+    edit.classList.add('dirty');
+  } else if (typeof move.comment === 'string' && move.comment.length) {
+    initialValue = move.comment;
+  }
+  edit.value = initialValue;
+
+  if (key) {
+    edit.addEventListener('input', (function (k) {
+      return function (ev) {
+        sessionEdits.set(k, ev.target.value);
+        ev.target.classList.add('dirty');
+      };
+    })(key));
+  } else {
+    edit.disabled = true;
   }
 
-  if (comment) {
-    const c = document.createElement('p');
-    c.className = 'pgn-viewer-explanation-comment';
-    c.textContent = comment;
-    explanationContainer.appendChild(c);
-  }
+  explanationContainer.appendChild(edit);
 
   if (nags.length > 0) {
     const n = document.createElement('p');
