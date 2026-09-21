@@ -889,3 +889,30 @@ Variant: A (Minimal · read-only current-move comment + raw NAGs)
 - No authoring · no editing · no persistence change
 
 ### Commit Chain
+## M14 — Session-Only Editable Move Annotation
+
+Version: 0.14.0
+Tag: baseline/m14-pass
+Entry Baseline: baseline/m13-pass (1e139ab)
+Date: 2026-09-21
+
+### Subject
+
+PG-5 — Per-line Annotation Editing
+Variant: A1 (always-editable textarea · session-only · N-1 NAG display-only)
+
+### Change Set
+
+| ID | File | Change | Commit |
+|----|------|--------|--------|
+| M14-C1 | js/pgn-viewer.js | Session-only editable textarea for move comment (sessionEdits Map · getEditKey · renderExplanation update · 3 CSS rules) | f9343f7 |
+
+### Target Behavior
+
+- Comment `<p>` replaced with always-editable `<textarea>` (per move)
+- Session edits in in-memory Map (no persistence · C-13 unchanged)
+- Empty edit = intentional session clear (dirty state preserved)
+- NAG display-only · "move.comment" / "move.nags" never mutated · "toPGN()" unchanged
+- Reload wipes edits (original restored)
+
+### Commit Chain
