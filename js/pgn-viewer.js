@@ -71,7 +71,8 @@ const LABELS = {
     explanationEmpty: 'ဤလှမ်းအတွက် မှတ်ချက် မရှိပါ။',
   },
 };
-function injectStylesOnce() {
+
+const L = LABELS[LANG] || LABELS.en;function injectStylesOnce() {
   if (document.getElementById('pgn-viewer-style')) return;
   const style = document.createElement('style');
   style.id = 'pgn-viewer-style';
@@ -195,7 +196,6 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
     const v = parseInt(e.target.value, 10);
     if (Number.isInteger(v)) jumpToMainline(v);
   });
-const L = LABELS[LANG] || LABELS.en;
 // --- LOGIC (pure) ---
 
 function computeStartFen(game) {
