@@ -1,6 +1,30 @@
 <!DOCTYPE html>
 <html lang="my">
 <head>
+  <script>
+  (function(){
+    function showErr(label, msg, extra){
+      try {
+        var d = document.createElement('pre');
+        d.style.cssText = 'background:#fee;color:#900;padding:8px;font-size:12px;border:2px solid #900;white-space:pre-wrap;margin:4px;position:relative;z-index:9999;font-family:monospace';
+        d.textContent = '[' + label + '] ' + msg + (extra ? '\n' + extra : '');
+        if (document.body) document.body.appendChild(d);
+        else document.addEventListener('DOMContentLoaded', function(){ document.body.appendChild(d); });
+      } catch(_) {}
+    }
+    window.addEventListener('error', function(e){
+      var extra = (e.filename || '?') + ':' + (e.lineno || '?') + ':' + (e.colno || '?');
+      if (e.error && e.error.stack) extra += '\n\n' + e.error.stack;
+      showErr('JS ERROR', e.message || '(no message)', extra);
+    }, true);
+    window.addEventListener('unhandledrejection', function(e){
+      var r = e.reason;
+      var msg = (r && r.message) ? r.message : String(r);
+      var extra = (r && r.stack) ? r.stack : '';
+      showErr('PROMISE REJECTION', msg, extra);
+    });
+  })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PCR Trainer — M6</title>
