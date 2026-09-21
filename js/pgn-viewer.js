@@ -4,6 +4,7 @@
 // M8: Move list (mainline + nested variations, click to jump)
 // M9: Keyboard (← → ↑ ↓) + Slider mainline navigation
 // M10: PGN metadata panel (read-only, Event/Site/Date/White/Black/Result/Round + conditional FEN)
+// M13: Move explanation region (read-only current-move comment + raw NAGs)
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 const MAX_VARIATION_DEPTH = 3;
@@ -36,6 +37,8 @@ const LABELS = {
     metaRound: 'Round',
     metaFen: 'FEN',
     metaEmpty: '\u2014',
+    explanationLabel: 'Move annotation',
+    explanationEmpty: 'No annotation for this move.',
   },
   my: {
     selectLabel: 'ဂိမ်း ရွေးပါ',
@@ -64,11 +67,10 @@ const LABELS = {
     metaRound: 'အဆင့်',
     metaFen: 'FEN',
     metaEmpty: '\u2014',
+    explanationLabel: 'လှမ်း မှတ်ချက်',
+    explanationEmpty: 'ဤလှမ်းအတွက် မှတ်ချက် မရှိပါ။',
   },
 };
-
-const L = LABELS[LANG] || LABELS.en;
-
 function injectStylesOnce() {
   if (document.getElementById('pgn-viewer-style')) return;
   const style = document.createElement('style');
@@ -82,9 +84,15 @@ function injectStylesOnce() {
     '.pgn-viewer .pgn-viewer-counter { font-size: 0.9em; margin: 4px 0; }',
     '.pgn-viewer .pgn-viewer-status { font-size: 0.9em; min-height: 1.2em; margin: 4px 0; }',
     '.pgn-viewer .pgn-viewer-status.error { color: #b00; }',
+    '.pgn-viewer .pgn-viewer-explanation { margin: 6px 0; padding: 6px 8px; background: #f6f6f6; border-radius: 4px; }',
+    '.pgn-viewer .pgn-viewer-explanation-header { font-size: 0.85em; margin: 0 0 4px 0; opacity: 0.7; }',
+    '.pgn-viewer .pgn-viewer-explanation-comment { margin: 2px 0; font-size: 0.95em; }',
+    '.pgn-viewer .pgn-viewer-explanation-nags { margin: 2px 0; font-size: 0.9em; opacity: 0.75; }',
+    '.pgn-viewer .pgn-viewer-explanation-empty { margin: 2px 0; font-size: 0.9em; opacity: 0.6; font-style: italic; }',
   ].join('\n');
   document.head.appendChild(style);
 }
+
 export function initPgnViewer({ getGames, renderBoard, Chess }) {
   if (typeof getGames !== 'function') throw new Error('initPgnViewer: getGames required');
   if (typeof renderBoard !== 'function') throw new Error('initPgnViewer: renderBoard required');
@@ -122,7 +130,6 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   selectLabel.appendChild(select);
   row1.appendChild(selectLabel);
 
-  // M10: metadata panel container (between row1 and row2)
   const metaContainer = document.createElement('div');
   metaContainer.className = 'pgn-viewer-meta hidden';
   metaContainer.id = 'pgn-viewer-meta';
@@ -147,6 +154,11 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   counter.id = 'pgn-move-counter';
   counter.textContent = '';
 
+  // M13 (PG-1 Variant A): read-only move explanation region
+  const explanationContainer = document.createElement('div');
+  explanationContainer.className = 'pgn-viewer-explanation';
+  explanationContainer.id = 'pgn-viewer-explanation';
+
   const ravContainer = document.createElement('div');
   ravContainer.className = 'pgn-viewer-rav';
   ravContainer.id = 'pgn-viewer-rav';
@@ -155,7 +167,6 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   moveListContainer.className = 'pgn-viewer-move-list';
   moveListContainer.id = 'pgn-viewer-move-list';
 
-  // M9 (T1): slider element (A4 — after Move List, before status)
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.id = 'pgn-viewer-slider';
@@ -171,19 +182,20 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   status.textContent = '';
 
   container.appendChild(row1);
-  container.appendChild(metaContainer);   // M10: metadata panel
+  container.appendChild(metaContainer);
   container.appendChild(row2);
   container.appendChild(counter);
+  container.appendChild(explanationContainer);
   container.appendChild(ravContainer);
   container.appendChild(moveListContainer);
-  container.appendChild(slider);   // M9 (T1): A4 placement
+  container.appendChild(slider);
   container.appendChild(status);
 
-  // M9 (T4): slider input → mainline jump (reuse M8 jumpToMainline)
   slider.addEventListener('input', function (e) {
     const v = parseInt(e.target.value, 10);
     if (Number.isInteger(v)) jumpToMainline(v);
   });
+const L = LABELS[LANG] || LABELS.en;
 // --- LOGIC (pure) ---
 
 function computeStartFen(game) {
@@ -292,7 +304,6 @@ function getAnchorIndex() {
   if (state.variationPath.length > 0) return state.variationPos - 1;
   return state.moveIdx;
 }
-
 function formatVariation(moves, maxMoves) {
   maxMoves = maxMoves || 8;
   if (!Array.isArray(moves) || moves.length === 0) return '(empty)';
@@ -342,6 +353,7 @@ function validateVariationPath(game, path, varPos) {
 
   return { valid: true, list: list };
 }
+
 function getCurrentHighlightKey() {
   if (state.selectedIdx < 0) return null;
   if (state.variationPath.length === 0) return 'main:' + state.moveIdx;
@@ -392,7 +404,6 @@ function updateButtons() {
   btnFinal.disabled = !hasGame || state.moveIdx >= state.totalMoves;
 }
 
-// M9 (T2): sync slider with mainline state (disabled in variation)
 function updateSlider() {
   if (!slider) return;
   const hasGame = state.selectedIdx >= 0;
@@ -402,9 +413,6 @@ function updateSlider() {
   slider.disabled = !hasGame || inVar;
 }
 
-// M10: render PGN metadata panel
-// Rows: Event · Site · Date · White · Black · Result · Round
-// Conditional: FEN (SetUp === '1' && FEN present) — last row
 function renderMetadata() {
   if (!metaContainer) return;
   metaContainer.innerHTML = '';
@@ -582,7 +590,6 @@ function renderMoveSequence(moves, parentPath, depth, frag, currentKey) {
     }
   }
 }
-
 function renderMoveList() {
   moveListContainer.innerHTML = '';
   if (state.selectedIdx < 0) return;
@@ -595,6 +602,74 @@ function renderMoveList() {
   renderMoveSequence(game.moves, [], 0, frag, currentKey);
   moveListContainer.appendChild(frag);
 }
+
+// M13 (PG-1 Variant A): resolve currently highlighted move object.
+// Returns null for: no game, initial position (mainline or variation).
+function getCurrentMoveForExplanation() {
+  if (state.selectedIdx < 0) return null;
+  const game = state.games[state.selectedIdx];
+  if (!game) return null;
+  if (state.variationPath.length === 0) {
+    if (state.moveIdx <= 0) return null;
+    const moves = Array.isArray(game.moves) ? game.moves : [];
+    if (state.moveIdx > moves.length) return null;
+    return moves[state.moveIdx - 1];
+  }
+  if (state.variationPos <= 0) return null;
+  const list = getCurrentList();
+  if (state.variationPos > list.length) return null;
+  return list[state.variationPos - 1];
+}
+
+// M13 (PG-1 Variant A): render current-move comment + raw NAGs (read-only).
+function renderExplanation() {
+  if (!explanationContainer) return;
+  explanationContainer.innerHTML = '';
+
+  const header = document.createElement('p');
+  header.className = 'pgn-viewer-explanation-header';
+  header.textContent = L.explanationLabel;
+  explanationContainer.appendChild(header);
+
+  const move = getCurrentMoveForExplanation();
+  if (!move) {
+    const empty = document.createElement('p');
+    empty.className = 'pgn-viewer-explanation-empty';
+    empty.textContent = L.explanationEmpty;
+    explanationContainer.appendChild(empty);
+    return;
+  }
+
+  const comment = (typeof move.comment === 'string' && move.comment.length)
+    ? move.comment
+    : '';
+  const nags = Array.isArray(move.nags)
+    ? move.nags.filter(function (n) { return typeof n === 'string' && n.length; })
+    : [];
+
+  if (!comment && nags.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'pgn-viewer-explanation-empty';
+    empty.textContent = L.explanationEmpty;
+    explanationContainer.appendChild(empty);
+    return;
+  }
+
+  if (comment) {
+    const c = document.createElement('p');
+    c.className = 'pgn-viewer-explanation-comment';
+    c.textContent = comment;
+    explanationContainer.appendChild(c);
+  }
+
+  if (nags.length > 0) {
+    const n = document.createElement('p');
+    n.className = 'pgn-viewer-explanation-nags';
+    n.textContent = nags.join(', ');
+    explanationContainer.appendChild(n);
+  }
+}
+
 function jumpToMainline(idx) {
   if (state.selectedIdx < 0) return;
   const game = state.games[state.selectedIdx];
@@ -630,6 +705,7 @@ function renderCurrent() {
     renderMetadata();
     renderRav();
     renderMoveList();
+    renderExplanation();
     return;
   }
   const game = state.games[state.selectedIdx];
@@ -640,6 +716,7 @@ function renderCurrent() {
     renderMetadata();
     renderRav();
     renderMoveList();
+    renderExplanation();
     return;
   }
 
@@ -662,6 +739,7 @@ function renderCurrent() {
       renderMetadata();
       renderRav();
       renderMoveList();
+      renderExplanation();
       return;
     }
   }
@@ -673,6 +751,7 @@ function renderCurrent() {
   renderMetadata();
   renderRav();
   renderMoveList();
+  renderExplanation();
 }
 
 function enterVariation(varIdx) {
@@ -712,7 +791,6 @@ function exitVariation() {
   renderCurrent();
 }
 
-// M9 (B1): named prev/next for keyboard reuse — mirrors M8 inline handlers
 function stepPrev() {
   if (state.variationPath.length > 0) {
     if (state.variationPos > 0) {
@@ -837,6 +915,7 @@ function stepNext() {
       renderMetadata();
       renderRav();
       renderMoveList();
+      renderExplanation();
       setStatus('', false);
     } else {
       select.value = '0';
@@ -862,7 +941,6 @@ function stepNext() {
     };
   }
 
-  // M9 (T6): focus guard — do not intercept keys in editable elements
   function isEditableFocused() {
     const el = document.activeElement;
     if (!el) return false;
@@ -872,7 +950,6 @@ function stepNext() {
     return false;
   }
 
-  // M9 (T5/T7): document-level keyboard navigation
   function onKeyDown(e) {
     if (isEditableFocused()) return;
     const key = e.key;
