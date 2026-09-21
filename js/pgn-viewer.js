@@ -6,6 +6,7 @@
 // M10: PGN metadata panel (read-only, Event/Site/Date/White/Black/Result/Round + conditional FEN)
 // M13: Move explanation region (read-only current-move comment + raw NAGs)
 // M14: Session-only editable comment (textarea) · NAG stays display-only
+// M15: Session-only Drill / Trainer mode (variant 1A · next-move prompt · SAN text input)
 
 const LANG = (document.documentElement.lang || 'en').slice(0, 2);
 const MAX_VARIATION_DEPTH = 3;
@@ -40,8 +41,15 @@ const LABELS = {
     metaEmpty: '\u2014',
     explanationLabel: 'Move annotation',
     explanationEmpty: 'No annotation for this move.',
-  },
-  my: {
+    drillStart: 'Drill',
+    drillExit: 'Exit Drill',
+    drillPrompt: 'Next move:',
+    drillSubmit: 'Submit',
+    drillReveal: 'Reveal',
+    drillCorrect: '\u2713 Correct',
+    drillIncorrect: '\u2717 Incorrect',
+    drillCounter: (a, c) => 'Attempted: ' + a + ' / Correct: ' + c,
+  },  my: {
     selectLabel: 'ဂိမ်း ရွေးပါ',
     noGames: 'ဂိမ်း မရှိသေး',
     navInitial: 'အစ',
@@ -70,10 +78,20 @@ const LABELS = {
     metaEmpty: '\u2014',
     explanationLabel: 'လှမ်း မှတ်ချက်',
     explanationEmpty: 'ဤလှမ်းအတွက် မှတ်ချက် မရှိပါ။',
+    drillStart: 'Drill',
+    drillExit: 'Drill ထွက်',
+    drillPrompt: 'နောက်လှမ်း:',
+    drillSubmit: 'ပို့',
+    drillReveal: 'ဖော်',
+    drillCorrect: '\u2713 မှန်',
+    drillIncorrect: '\u2717 မှား',
+    drillCounter: (a, c) => 'ကြိုးစား: ' + a + ' / မှန်: ' + c,
   },
 };
 
-const L = LABELS[LANG] || LABELS.en;function injectStylesOnce() {
+const L = LABELS[LANG] || LABELS.en;
+
+function injectStylesOnce() {
   if (document.getElementById('pgn-viewer-style')) return;
   const style = document.createElement('style');
   style.id = 'pgn-viewer-style';
@@ -91,13 +109,22 @@ const L = LABELS[LANG] || LABELS.en;function injectStylesOnce() {
     '.pgn-viewer .pgn-viewer-explanation-edit { width: 100%; box-sizing: border-box; padding: 4px 6px; font: inherit; font-size: 0.95em; border: 1px solid #ccc; border-radius: 3px; background: #fff; resize: vertical; min-height: 2.2em; }',
     '.pgn-viewer .pgn-viewer-explanation-edit:focus { outline: none; border-color: #4a90e2; }',
     '.pgn-viewer .pgn-viewer-explanation-edit.dirty { border-color: #d18b00; background: #fffbea; }',
+    '.pgn-viewer .pgn-viewer-explanation-edit:disabled { opacity: 0.6; }',
     '.pgn-viewer .pgn-viewer-explanation-nags { margin: 4px 0 2px 0; font-size: 0.9em; opacity: 0.75; }',
     '.pgn-viewer .pgn-viewer-explanation-empty { margin: 2px 0; font-size: 0.9em; opacity: 0.6; font-style: italic; }',
+    '.pgn-viewer .pgn-viewer-drill { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; padding: 6px 8px; background: #eef4fb; border-radius: 4px; }',
+    '.pgn-viewer .pgn-viewer-drill.hidden { display: none; }',
+    '.pgn-viewer .pgn-viewer-drill input[type="text"] { padding: 4px 6px; font: inherit; font-size: 0.95em; border: 1px solid #ccc; border-radius: 3px; min-width: 6em; }',
+    '.pgn-viewer .pgn-viewer-drill input[type="text"]:disabled { opacity: 0.6; }',
+    '.pgn-viewer .pgn-viewer-drill-feedback { font-size: 0.9em; min-width: 5em; }',
+    '.pgn-viewer .pgn-viewer-drill-feedback.correct { color: #1a7f1a; }',
+    '.pgn-viewer .pgn-viewer-drill-feedback.incorrect { color: #b00; }',
+    '.pgn-viewer .pgn-viewer-drill-counter { font-size: 0.85em; opacity: 0.75; margin-left: auto; }',
+    '.pgn-viewer .pgn-viewer-move-item.pgn-viewer-drill-hidden { font-style: italic; opacity: 0.5; }',
+    '.pgn-viewer .pgn-viewer-drill button { min-height: 44px; min-width: 72px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }',
   ].join('\n');
   document.head.appendChild(style);
-}
-
-export function initPgnViewer({ getGames, renderBoard, Chess }) {
+}export function initPgnViewer({ getGames, renderBoard, Chess }) {
   if (typeof getGames !== 'function') throw new Error('initPgnViewer: getGames required');
   if (typeof renderBoard !== 'function') throw new Error('initPgnViewer: renderBoard required');
   if (typeof Chess !== 'function') throw new Error('initPgnViewer: Chess required');
@@ -116,7 +143,15 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   // M14 (PG-5): session-only per-move edit store (in-memory · not persisted)
   const sessionEdits = new Map();
 
-  // M14: stable key for the currently displayed move (mainline or variation)
+  // M15 (PG-3): session-only drill state (in-memory · not persisted)
+  const drillSession = {
+    active: false,
+    attempted: 0,
+    correct: 0,
+    lastFeedback: null,
+  };
+  let m14Focused = false;
+
   function getEditKey() {
     if (state.selectedIdx < 0) return null;
     if (state.variationPath.length === 0) {
@@ -162,17 +197,61 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   btnNext.type = 'button'; btnNext.id = 'pgn-next'; btnNext.textContent = L.navNext;
   const btnFinal = document.createElement('button');
   btnFinal.type = 'button'; btnFinal.id = 'pgn-final'; btnFinal.textContent = L.navFinal;
+  const btnDrill = document.createElement('button');
+  btnDrill.type = 'button'; btnDrill.id = 'pgn-drill-btn'; btnDrill.textContent = L.drillStart;
   row2.appendChild(btnInit);
   row2.appendChild(btnPrev);
   row2.appendChild(btnNext);
   row2.appendChild(btnFinal);
+  row2.appendChild(btnDrill);
+
+  const drillPanel = document.createElement('div');
+  drillPanel.className = 'pgn-viewer-drill hidden';
+  drillPanel.id = 'pgn-viewer-drill';
+
+  const drillLabel = document.createElement('label');
+  drillLabel.textContent = L.drillPrompt + ' ';
+  const drillInput = document.createElement('input');
+  drillInput.type = 'text';
+  drillInput.id = 'pgn-drill-input';
+  drillInput.autocomplete = 'off';
+  drillInput.autocapitalize = 'off';
+  drillInput.spellcheck = false;
+  drillInput.disabled = true;
+  drillLabel.appendChild(drillInput);
+
+  const drillSubmit = document.createElement('button');
+  drillSubmit.type = 'button';
+  drillSubmit.id = 'pgn-drill-submit';
+  drillSubmit.textContent = L.drillSubmit;
+  drillSubmit.disabled = true;
+
+  const drillReveal = document.createElement('button');
+  drillReveal.type = 'button';
+  drillReveal.id = 'pgn-drill-reveal';
+  drillReveal.textContent = L.drillReveal;
+  drillReveal.disabled = true;
+
+  const drillFeedback = document.createElement('span');
+  drillFeedback.className = 'pgn-viewer-drill-feedback';
+  drillFeedback.id = 'pgn-drill-feedback';
+
+  const drillCounterEl = document.createElement('span');
+  drillCounterEl.className = 'pgn-viewer-drill-counter';
+  drillCounterEl.id = 'pgn-drill-counter';
+  drillCounterEl.textContent = L.drillCounter(0, 0);
+
+  drillPanel.appendChild(drillLabel);
+  drillPanel.appendChild(drillSubmit);
+  drillPanel.appendChild(drillReveal);
+  drillPanel.appendChild(drillFeedback);
+  drillPanel.appendChild(drillCounterEl);
 
   const counter = document.createElement('p');
   counter.className = 'pgn-viewer-counter';
   counter.id = 'pgn-move-counter';
   counter.textContent = '';
 
-  // M13 (PG-1): read-only move explanation region (M14: editable comment)
   const explanationContainer = document.createElement('div');
   explanationContainer.className = 'pgn-viewer-explanation';
   explanationContainer.id = 'pgn-viewer-explanation';
@@ -202,6 +281,7 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   container.appendChild(row1);
   container.appendChild(metaContainer);
   container.appendChild(row2);
+  container.appendChild(drillPanel);
   container.appendChild(counter);
   container.appendChild(explanationContainer);
   container.appendChild(ravContainer);
@@ -212,10 +292,7 @@ export function initPgnViewer({ getGames, renderBoard, Chess }) {
   slider.addEventListener('input', function (e) {
     const v = parseInt(e.target.value, 10);
     if (Number.isInteger(v)) jumpToMainline(v);
-  });
-// --- LOGIC (pure) ---
-
-function computeStartFen(game) {
+  });function computeStartFen(game) {
   if (!game || !game.tags) return null;
   if (game.tags.SetUp === '1' && typeof game.tags.FEN === 'string' && game.tags.FEN.length) {
     return game.tags.FEN;
@@ -321,6 +398,7 @@ function getAnchorIndex() {
   if (state.variationPath.length > 0) return state.variationPos - 1;
   return state.moveIdx;
 }
+
 function formatVariation(moves, maxMoves) {
   maxMoves = maxMoves || 8;
   if (!Array.isArray(moves) || moves.length === 0) return '(empty)';
@@ -427,13 +505,10 @@ function updateSlider() {
   const inVar = state.variationPath.length > 0;
   slider.max = String(state.totalMoves);
   slider.value = String(state.moveIdx);
-  slider.disabled = !hasGame || inVar;
-}
-
-function renderMetadata() {
+  slider.disabled = !hasGame || inVar || drillSession.active;
+}function renderMetadata() {
   if (!metaContainer) return;
   metaContainer.innerHTML = '';
-
   if (state.selectedIdx < 0) {
     metaContainer.classList.add('hidden');
     return;
@@ -447,7 +522,6 @@ function renderMetadata() {
 
   const tags = game.tags;
   const frag = document.createDocumentFragment();
-
   const header = document.createElement('p');
   header.className = 'pgn-viewer-meta-header';
   header.textContent = L.metaHeader;
@@ -502,7 +576,6 @@ function renderMetadata() {
 
 function renderRav() {
   ravContainer.innerHTML = '';
-
   const inVar = state.variationPath.length > 0;
   let variations = [];
 
@@ -541,7 +614,10 @@ function renderRav() {
       item.dataset.depth = String(displayDepth);
       item.textContent = formatVariation(variations[i]);
       item.addEventListener('click', (function (idx) {
-        return function () { enterVariation(idx); };
+        return function () {
+          if (drillSession.active) return;
+          enterVariation(idx);
+        };
       })(i));
       ravContainer.appendChild(item);
     }
@@ -552,7 +628,10 @@ function renderRav() {
     exitBtn.type = 'button';
     exitBtn.className = 'pgn-viewer-exit';
     exitBtn.textContent = L.exitVariation;
-    exitBtn.addEventListener('click', exitVariation);
+    exitBtn.addEventListener('click', function () {
+      if (drillSession.active) return;
+      exitVariation();
+    });
     ravContainer.appendChild(exitBtn);
   }
 }
@@ -607,6 +686,7 @@ function renderMoveSequence(moves, parentPath, depth, frag, currentKey) {
     }
   }
 }
+
 function renderMoveList() {
   moveListContainer.innerHTML = '';
   if (state.selectedIdx < 0) return;
@@ -615,13 +695,22 @@ function renderMoveList() {
 
   const currentKey = getCurrentHighlightKey();
   const frag = document.createDocumentFragment();
-
   renderMoveSequence(game.moves, [], 0, frag, currentKey);
   moveListContainer.appendChild(frag);
+
+  if (drillSession.active && state.variationPath.length === 0) {
+    const targetKey = 'main:' + (state.moveIdx + 1);
+    const items = moveListContainer.querySelectorAll('.pgn-viewer-move-item');
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].dataset.key === targetKey) {
+        items[i].classList.add('pgn-viewer-drill-hidden');
+        items[i].textContent = '?';
+        break;
+      }
+    }
+  }
 }
 
-// M13 (PG-1): resolve currently highlighted move object.
-// Returns null for: no game, initial position (mainline or variation).
 function getCurrentMoveForExplanation() {
   if (state.selectedIdx < 0) return null;
   const game = state.games[state.selectedIdx];
@@ -638,7 +727,6 @@ function getCurrentMoveForExplanation() {
   return list[state.variationPos - 1];
 }
 
-// M13 (PG-1) + M14 (PG-5): editable comment textarea + read-only NAG display
 function renderExplanation() {
   if (!explanationContainer) return;
   explanationContainer.innerHTML = '';
@@ -661,9 +749,6 @@ function renderExplanation() {
     ? move.nags.filter(function (n) { return typeof n === 'string' && n.length; })
     : [];
 
-  // M14 (PG-5): session-only editable textarea for comment
-  // - sessionEdits.has(key) takes precedence over move.comment (empty string is intentional)
-  // - move.comment is never mutated; toPGN() is unaffected
   const key = getEditKey();
   const edit = document.createElement('textarea');
   edit.className = 'pgn-viewer-explanation-edit';
@@ -686,6 +771,18 @@ function renderExplanation() {
         ev.target.classList.add('dirty');
       };
     })(key));
+    if (drillSession.active) {
+      edit.disabled = true;
+    } else {
+      edit.addEventListener('focus', function () {
+        m14Focused = true;
+        updateDrillUI();
+      });
+      edit.addEventListener('blur', function () {
+        m14Focused = false;
+        updateDrillUI();
+      });
+    }
   } else {
     edit.disabled = true;
   }
@@ -713,13 +810,12 @@ function jumpToMainline(idx) {
 }
 
 function jumpToVariation(path, varPos) {
+  if (drillSession.active) resetDrillState();
   if (state.selectedIdx < 0) return;
   const game = state.games[state.selectedIdx];
   if (!game) return;
-
   const check = validateVariationPath(game, path, varPos);
   if (!check.valid) return;
-
   state.variationPath = path.map(function (s) {
     return { moveIdx: s.moveIdx, varIdx: s.varIdx };
   });
@@ -729,24 +825,16 @@ function jumpToVariation(path, varPos) {
 
 function renderCurrent() {
   if (state.selectedIdx < 0) {
-    updateCounter();
-    updateButtons();
-    updateSlider();
-    renderMetadata();
-    renderRav();
-    renderMoveList();
-    renderExplanation();
+    updateCounter(); updateButtons(); updateSlider();
+    renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
+    updateDrillUI();
     return;
   }
   const game = state.games[state.selectedIdx];
   if (!game) {
-    updateCounter();
-    updateButtons();
-    updateSlider();
-    renderMetadata();
-    renderRav();
-    renderMoveList();
-    renderExplanation();
+    updateCounter(); updateButtons(); updateSlider();
+    renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
+    updateDrillUI();
     return;
   }
 
@@ -763,28 +851,21 @@ function renderCurrent() {
       renderBoard(boardEl, result.fen);
     } catch (e) {
       setStatus('renderBoard error: ' + (e && e.message ? e.message : String(e)), true);
-      updateCounter();
-      updateButtons();
-      updateSlider();
-      renderMetadata();
-      renderRav();
-      renderMoveList();
-      renderExplanation();
+      updateCounter(); updateButtons(); updateSlider();
+      renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
+      updateDrillUI();
       return;
     }
   }
   if (result.error) setStatus(result.error, true);
   else setStatus('', false);
-  updateCounter();
-  updateButtons();
-  updateSlider();
-  renderMetadata();
-  renderRav();
-  renderMoveList();
-  renderExplanation();
+  updateCounter(); updateButtons(); updateSlider();
+  renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
+  updateDrillUI();
 }
 
 function enterVariation(varIdx) {
+  if (drillSession.active) resetDrillState();
   if (state.selectedIdx < 0) return;
   const inVar = state.variationPath.length > 0;
   const currentList = inVar
@@ -803,7 +884,6 @@ function enterVariation(varIdx) {
     setStatus(L.maxDepth, true);
     return;
   }
-
   state.variationPath.push({ moveIdx: anchorIdx, varIdx: varIdx });
   state.variationPos = 1;
   renderCurrent();
@@ -844,7 +924,104 @@ function stepNext() {
   }
   renderCurrent();
 }
-  function buildSelectOptions() {
+
+function getExpectedSanForDrill() {
+  if (state.selectedIdx < 0) return null;
+  if (state.variationPath.length > 0) return null;
+  const game = state.games[state.selectedIdx];
+  if (!game) return null;
+  const moves = Array.isArray(game.moves) ? game.moves : [];
+  const nextIdx = state.moveIdx;
+  if (nextIdx < 0 || nextIdx >= moves.length) return null;
+  const m = moves[nextIdx];
+  return (m && typeof m.san === 'string' && m.san.length) ? m.san : null;
+}
+
+function resetDrillState() {
+  drillSession.active = false;
+  drillSession.attempted = 0;
+  drillSession.correct = 0;
+  drillSession.lastFeedback = null;
+}
+
+function updateDrillUI() {
+  if (!drillPanel || !btnDrill) return;
+  if (drillSession.active) {
+    btnDrill.textContent = L.drillExit;
+    drillPanel.classList.remove('hidden');
+    btnDrill.disabled = false;
+  } else {
+    btnDrill.textContent = L.drillStart;
+    drillPanel.classList.add('hidden');
+    btnDrill.disabled = m14Focused;
+  }
+
+  const hasNext = drillSession.active && getExpectedSanForDrill() !== null;
+  drillInput.disabled = !drillSession.active || !hasNext;
+  drillSubmit.disabled = !drillSession.active || !hasNext;
+  drillReveal.disabled = !drillSession.active || !hasNext;
+
+  drillCounterEl.textContent = L.drillCounter(drillSession.attempted, drillSession.correct);
+
+  if (drillSession.lastFeedback === 'correct') {
+    drillFeedback.textContent = L.drillCorrect;
+    drillFeedback.className = 'pgn-viewer-drill-feedback correct';
+  } else if (drillSession.lastFeedback === 'incorrect') {
+    drillFeedback.textContent = L.drillIncorrect;
+    drillFeedback.className = 'pgn-viewer-drill-feedback incorrect';
+  } else {
+    drillFeedback.textContent = '';
+    drillFeedback.className = 'pgn-viewer-drill-feedback';
+  }
+}
+
+function enterDrill() {
+  if (state.selectedIdx < 0) return;
+  if (state.variationPath.length > 0) return;
+  drillSession.active = true;
+  drillSession.attempted = 0;
+  drillSession.correct = 0;
+  drillSession.lastFeedback = null;
+  drillInput.value = '';
+  renderCurrent();
+}
+
+function exitDrill() {
+  resetDrillState();
+  drillInput.value = '';
+  renderCurrent();
+}
+
+function handleDrillSubmit() {
+  if (!drillSession.active) return;
+  const raw = drillInput.value;
+  const trimmed = (raw || '').trim();
+  if (trimmed === '') return;
+  const expected = getExpectedSanForDrill();
+  if (!expected) return;
+  const match = trimmed.toLowerCase() === expected.toLowerCase();
+  drillSession.attempted += 1;
+  if (match) {
+    drillSession.correct += 1;
+    drillSession.lastFeedback = 'correct';
+    if (state.moveIdx < state.totalMoves) state.moveIdx += 1;
+  } else {
+    drillSession.lastFeedback = 'incorrect';
+  }
+  drillInput.value = '';
+  renderCurrent();
+}
+
+function handleDrillReveal() {
+  if (!drillSession.active) return;
+  const expected = getExpectedSanForDrill();
+  if (!expected) return;
+  drillSession.attempted += 1;
+  drillSession.lastFeedback = null;
+  if (state.moveIdx < state.totalMoves) state.moveIdx += 1;
+  drillInput.value = '';
+  renderCurrent();
+}  function buildSelectOptions() {
     select.innerHTML = '';
     if (!state.games.length) {
       const opt = document.createElement('option');
@@ -868,6 +1045,10 @@ function stepNext() {
   }
 
   function selectGame(idx) {
+    if (drillSession.active) {
+      resetDrillState();
+      drillInput.value = '';
+    }
     state.selectedIdx = idx;
     state.variationPath = [];
     state.variationPos = 0;
@@ -929,23 +1110,36 @@ function stepNext() {
     renderCurrent();
   });
 
+  btnDrill.addEventListener('click', function () {
+    if (drillSession.active) exitDrill();
+    else enterDrill();
+  });
+
+  drillSubmit.addEventListener('click', handleDrillSubmit);
+  drillReveal.addEventListener('click', handleDrillReveal);
+
+  drillInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleDrillSubmit();
+    }
+  });
+
   function refresh() {
     const games = getGames();
     state.games = Array.isArray(games) ? games : [];
     buildSelectOptions();
     if (state.games.length === 0) {
+      resetDrillState();
+      drillInput.value = '';
       state.selectedIdx = -1;
       state.moveIdx = 0;
       state.totalMoves = 0;
       state.variationPath = [];
       state.variationPos = 0;
-      updateCounter();
-      updateButtons();
-      updateSlider();
-      renderMetadata();
-      renderRav();
-      renderMoveList();
-      renderExplanation();
+      updateCounter(); updateButtons(); updateSlider();
+      renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
+      updateDrillUI();
       setStatus('', false);
     } else {
       select.value = '0';
