@@ -916,3 +916,68 @@ Variant: A1 (always-editable textarea · session-only · N-1 NAG display-only)
 - Reload wipes edits (original restored)
 
 ### Commit Chain
+## M15 — Session-only Drill / Trainer Mode
+
+- Version: 0.15.0
+- Tag: baseline/m15-pass → a71ca9e
+- Entry baseline: baseline/m14-pass → f9343f7
+- Date: 2026-09-22
+- Commit: a71ca9e (parent 150030c)
+- Editable file: js/pgn-viewer.js only
+
+### Scope
+
+M15 = PG-3 Trainer / Drill Mode · session-only
+Variant = 1A (next-move prompt)
+
+- Session-only memory state (no persistence)
+- SAN text input · exact + case-insensitive + trim only
+- Correct → advance · Incorrect → no advance · Reveal → advance
+- Empty input ignored
+- Slider disabled during drill
+- M9 navigation preserved · RAV read-only during drill
+- M14 textarea ↔ drill mutual exclusion
+- Next-move-only hiding in move list
+
+### Boundaries preserved
+
+- No persistence (localStorage / sessionStorage / IndexedDB / cookies)
+- No C-13 schema change
+- No move.san / move.comment / move.nags mutation
+- toPGN() byte-identical
+- No new file · no dependency
+- board.js · pgn-model.js · i18n.js · css/style.css untouched
+- Public API unchanged
+- M14 baseline immutable
+
+### Verification
+
+- G6 functional (SPCK Preview) = PASS
+  - V1–V14 drill-OFF regression · M1 smoke byte-identical
+  - VE-C1–C15 · SAN matrix · empty / last-ply · lifecycle
+  - M14 VE-B1–B15 preserved
+- VE-C11 (sessionEdits preservation) = PASS
+- VE-C13 (toPGN byte-identity) = PASS
+- VE-C14 (move integrity · UI-observable) = PASS (evidence boundary disclosed)
+- C-13 no-write verified (localStorage + sessionStorage)
+- GitHub Pages runtime = PARTIAL
+  - PASS: page load · board · FEN · M1 smoke · Drill button · nav buttons
+  - BLOCKED: game loading failed (PgnParser race · environmental)
+  - Drill functional verify on Pages = deferred (not M15 scope)
+
+### Deviations
+
+- D-7 commit message deviation = ACCEPTED (non-blocking)
+- D-8 diff size variance (+261 / −67) = NOTED
+
+### Unknown / deferred (preserved)
+
+- PgnParser race = UNKNOWN · out of M15 scope
+- F-1 · F-6 · N2 · GAP-8 · OBS-B · DF-1/2/3 · PL-series preserved
+- VE-B5 / B6 / B9 N/A preserved
+- M13 / M14 below-cutoff preserved
+
+### Rollback
+
+- Fallback: baseline/m14-pass → f9343f7
+- Restore method: file copy from baseline (atomic · PO-controlled)
