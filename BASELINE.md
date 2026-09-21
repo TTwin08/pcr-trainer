@@ -861,3 +861,31 @@ M12.1: Product Owner — 2026-09-21
 
 Constitution Ref: V3.0.0 FINAL
 Workflow Ref: v1.0 FINAL
+## M13 — Move Explanation / Annotation Region
+
+Version: 0.13.0
+Tag: baseline/m13-pass
+Entry Baseline: baseline/m12.1-pass (ac79f45)
+Date: 2026-09-21
+
+### Subject
+
+PG-1 — Move Explanation / Annotation Region
+Variant: A (Minimal · read-only current-move comment + raw NAGs)
+
+### Change Set
+
+| ID | File | Change | Commit |
+|----|------|--------|--------|
+| M13-C1 | js/pgn-viewer.js | Add move explanation region (LABELS keys, CSS rules, container, resolver, renderer, invocations) | 10cda94 |
+| M13-C2 | js/pgn-viewer.js | Fix: restore missing `const L` line (post-paste recovery) | d74e28c |
+| M13-C3 | index.html | Revert diagnostic error overlay (temporary GitHub Pages diagnostic) | 1e139ab |
+
+### Target Behavior
+
+- Read-only display of current move's `comment` and raw `nags`
+- Region placed between `#pgn-move-counter` and `#pgn-viewer-rav`
+- Empty state: `"No annotation for this move."` / `"ဤလှမ်းအတွက် မှတ်ချက် မရှိပါ။"`
+- No authoring · no editing · no persistence change
+
+### Commit Chain
