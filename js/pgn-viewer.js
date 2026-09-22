@@ -49,6 +49,9 @@ const LABELS = {
     drillCorrect: '\u2713 Correct',
     drillIncorrect: '\u2717 Incorrect',
     drillCounter: (a, c) => 'Attempted: ' + a + ' / Correct: ' + c,
+      sideBoth: 'Both',
+    sideWhite: 'White',
+    sideBlack: 'Black',
   },  my: {
     selectLabel: 'ဂိမ်း ရွေးပါ',
     noGames: 'ဂိမ်း မရှိသေး',
@@ -86,12 +89,13 @@ const LABELS = {
     drillCorrect: '\u2713 မှန်',
     drillIncorrect: '\u2717 မှား',
     drillCounter: (a, c) => 'ကြိုးစား: ' + a + ' / မှန်: ' + c,
+    sideBoth: 'နှစ်ခုလုံး',
+    sideWhite: 'အဖြူ',
+    sideBlack: 'အမဲ',
   },
 };
 
-const L = LABELS[LANG] || LABELS.en;
-
-function injectStylesOnce() {
+const L = LABELS[LANG] || LABELS.en;function injectStylesOnce() {
   if (document.getElementById('pgn-viewer-style')) return;
   const style = document.createElement('style');
   style.id = 'pgn-viewer-style';
@@ -122,6 +126,10 @@ function injectStylesOnce() {
     '.pgn-viewer .pgn-viewer-drill-counter { font-size: 0.85em; opacity: 0.75; margin-left: auto; }',
     '.pgn-viewer .pgn-viewer-move-item.pgn-viewer-drill-hidden { font-style: italic; opacity: 0.5; }',
     '.pgn-viewer .pgn-viewer-drill button { min-height: 44px; min-width: 72px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }',
+    '.pgn-viewer .pgn-viewer-drill-side { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-right: 8px; }',
+    '.pgn-viewer .pgn-viewer-drill-side button { min-height: 44px; min-width: 72px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }',
+    '.pgn-viewer .pgn-viewer-drill-side button.active { font-weight: bold; outline: 2px solid #4a90e2; }',
+    '.pgn-viewer .pgn-viewer-drill-side button:not(.active) { opacity: 0.75; }',
   ].join('\n');
   document.head.appendChild(style);
 }export function initPgnViewer({ getGames, renderBoard, Chess }) {
@@ -149,6 +157,7 @@ function injectStylesOnce() {
     attempted: 0,
     correct: 0,
     lastFeedback: null,
+    sideFilter: 'both',
   };
   let m14Focused = false;
 
@@ -160,54 +169,71 @@ function injectStylesOnce() {
     }
     if (state.variationPos <= 0) return null;
     return state.selectedIdx + '|var|' + JSON.stringify(state.variationPath) + '|' + state.variationPos;
-  }
+  }const container = document.getElementById('pgn-viewer');
+if (!container) {
+  console.warn('[M8] #pgn-viewer container not found');
+  return {
+    refresh: () => {},
+    getFenAt: () => ({ fen: '', error: 'no container' }),
+    getState: () => Object.assign({}, state),
+  };
+}
+container.classList.add('pgn-viewer');
+container.innerHTML = '';
 
-  const container = document.getElementById('pgn-viewer');
-  if (!container) {
-    console.warn('[M8] #pgn-viewer container not found');
-    return {
-      refresh: () => {},
-      getFenAt: () => ({ fen: '', error: 'no container' }),
-      getState: () => Object.assign({}, state),
-    };
-  }
-  container.classList.add('pgn-viewer');
-  container.innerHTML = '';
+const row1 = document.createElement('div');
+row1.className = 'pgn-viewer-row';
+const selectLabel = document.createElement('label');
+selectLabel.textContent = L.selectLabel + ': ';
+const select = document.createElement('select');
+select.id = 'pgn-game-select';
+selectLabel.appendChild(select);
+row1.appendChild(selectLabel);
 
-  const row1 = document.createElement('div');
-  row1.className = 'pgn-viewer-row';
-  const selectLabel = document.createElement('label');
-  selectLabel.textContent = L.selectLabel + ': ';
-  const select = document.createElement('select');
-  select.id = 'pgn-game-select';
-  selectLabel.appendChild(select);
-  row1.appendChild(selectLabel);
-
-  const metaContainer = document.createElement('div');
-  metaContainer.className = 'pgn-viewer-meta hidden';
-  metaContainer.id = 'pgn-viewer-meta';
-
-  const row2 = document.createElement('div');
-  row2.className = 'pgn-viewer-row';
-  const btnInit = document.createElement('button');
-  btnInit.type = 'button'; btnInit.id = 'pgn-init'; btnInit.textContent = L.navInitial;
-  const btnPrev = document.createElement('button');
-  btnPrev.type = 'button'; btnPrev.id = 'pgn-prev'; btnPrev.textContent = L.navPrev;
-  const btnNext = document.createElement('button');
-  btnNext.type = 'button'; btnNext.id = 'pgn-next'; btnNext.textContent = L.navNext;
-  const btnFinal = document.createElement('button');
-  btnFinal.type = 'button'; btnFinal.id = 'pgn-final'; btnFinal.textContent = L.navFinal;
-  const btnDrill = document.createElement('button');
-  btnDrill.type = 'button'; btnDrill.id = 'pgn-drill-btn'; btnDrill.textContent = L.drillStart;
-  row2.appendChild(btnInit);
-  row2.appendChild(btnPrev);
-  row2.appendChild(btnNext);
-  row2.appendChild(btnFinal);
-  row2.appendChild(btnDrill);
-
-  const drillPanel = document.createElement('div');
+const metaContainer = document.createElement('div');
+metaContainer.className = 'pgn-viewer-meta hidden';
+metaContainer.id = 'pgn-viewer-meta';const row2 = document.createElement('div');
+row2.className = 'pgn-viewer-row';
+const btnInit = document.createElement('button');
+btnInit.type = 'button'; btnInit.id = 'pgn-init'; btnInit.textContent = L.navInitial;
+const btnPrev = document.createElement('button');
+btnPrev.type = 'button'; btnPrev.id = 'pgn-prev'; btnPrev.textContent = L.navPrev;
+const btnNext = document.createElement('button');
+btnNext.type = 'button'; btnNext.id = 'pgn-next'; btnNext.textContent = L.navNext;
+const btnFinal = document.createElement('button');
+btnFinal.type = 'button'; btnFinal.id = 'pgn-final'; btnFinal.textContent = L.navFinal;
+const btnDrill = document.createElement('button');
+btnDrill.type = 'button'; btnDrill.id = 'pgn-drill-btn'; btnDrill.textContent = L.drillStart;
+row2.appendChild(btnInit);
+row2.appendChild(btnPrev);
+row2.appendChild(btnNext);
+row2.appendChild(btnFinal);
+row2.appendChild(btnDrill);  const drillPanel = document.createElement('div');
   drillPanel.className = 'pgn-viewer-drill hidden';
   drillPanel.id = 'pgn-viewer-drill';
+
+  const drillSideSelector = document.createElement('div');
+  drillSideSelector.className = 'pgn-viewer-drill-side';
+  const drillSideBothBtn = document.createElement('button');
+  drillSideBothBtn.type = 'button'; drillSideBothBtn.dataset.side = 'both';
+  drillSideBothBtn.textContent = L.sideBoth; drillSideBothBtn.classList.add('active');
+  const drillSideWhiteBtn = document.createElement('button');
+  drillSideWhiteBtn.type = 'button'; drillSideWhiteBtn.dataset.side = 'white';
+  drillSideWhiteBtn.textContent = L.sideWhite;
+  const drillSideBlackBtn = document.createElement('button');
+  drillSideBlackBtn.type = 'button'; drillSideBlackBtn.dataset.side = 'black';
+  drillSideBlackBtn.textContent = L.sideBlack;
+  drillSideSelector.appendChild(drillSideBothBtn);
+  drillSideSelector.appendChild(drillSideWhiteBtn);
+  drillSideSelector.appendChild(drillSideBlackBtn);
+  drillSideSelector.addEventListener('click', function (e) {
+  const btn = e.target.closest('button[data-side]');
+  if (!btn || !drillSession.active) return;
+  if (btn.dataset.side === drillSession.sideFilter) return;
+  drillSession.sideFilter = btn.dataset.side;
+  renderCurrentDrillAware();
+});
+  drillPanel.appendChild(drillSideSelector);
 
   const drillLabel = document.createElement('label');
   drillLabel.textContent = L.drillPrompt + ' ';
@@ -245,54 +271,52 @@ function injectStylesOnce() {
   drillPanel.appendChild(drillSubmit);
   drillPanel.appendChild(drillReveal);
   drillPanel.appendChild(drillFeedback);
-  drillPanel.appendChild(drillCounterEl);
+  drillPanel.appendChild(drillCounterEl);const counter = document.createElement('p');
+counter.className = 'pgn-viewer-counter';
+counter.id = 'pgn-move-counter';
+counter.textContent = '';
 
-  const counter = document.createElement('p');
-  counter.className = 'pgn-viewer-counter';
-  counter.id = 'pgn-move-counter';
-  counter.textContent = '';
+const explanationContainer = document.createElement('div');
+explanationContainer.className = 'pgn-viewer-explanation';
+explanationContainer.id = 'pgn-viewer-explanation';
 
-  const explanationContainer = document.createElement('div');
-  explanationContainer.className = 'pgn-viewer-explanation';
-  explanationContainer.id = 'pgn-viewer-explanation';
+const ravContainer = document.createElement('div');
+ravContainer.className = 'pgn-viewer-rav';
+ravContainer.id = 'pgn-viewer-rav';
 
-  const ravContainer = document.createElement('div');
-  ravContainer.className = 'pgn-viewer-rav';
-  ravContainer.id = 'pgn-viewer-rav';
+const moveListContainer = document.createElement('div');
+moveListContainer.className = 'pgn-viewer-move-list';
+moveListContainer.id = 'pgn-viewer-move-list';
 
-  const moveListContainer = document.createElement('div');
-  moveListContainer.className = 'pgn-viewer-move-list';
-  moveListContainer.id = 'pgn-viewer-move-list';
+const slider = document.createElement('input');
+slider.type = 'range';
+slider.id = 'pgn-viewer-slider';
+slider.className = 'pgn-viewer-slider';
+slider.min = '0';
+slider.max = '0';
+slider.value = '0';
+slider.disabled = true;
 
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.id = 'pgn-viewer-slider';
-  slider.className = 'pgn-viewer-slider';
-  slider.min = '0';
-  slider.max = '0';
-  slider.value = '0';
-  slider.disabled = true;
+const status = document.createElement('p');
+status.className = 'pgn-viewer-status';
+status.id = 'pgn-viewer-status';
+status.textContent = '';
 
-  const status = document.createElement('p');
-  status.className = 'pgn-viewer-status';
-  status.id = 'pgn-viewer-status';
-  status.textContent = '';
+container.appendChild(row1);
+container.appendChild(metaContainer);
+container.appendChild(row2);
+container.appendChild(drillPanel);
+container.appendChild(counter);
+container.appendChild(explanationContainer);
+container.appendChild(ravContainer);
+container.appendChild(moveListContainer);
+container.appendChild(slider);
+container.appendChild(status);
 
-  container.appendChild(row1);
-  container.appendChild(metaContainer);
-  container.appendChild(row2);
-  container.appendChild(drillPanel);
-  container.appendChild(counter);
-  container.appendChild(explanationContainer);
-  container.appendChild(ravContainer);
-  container.appendChild(moveListContainer);
-  container.appendChild(slider);
-  container.appendChild(status);
-
-  slider.addEventListener('input', function (e) {
-    const v = parseInt(e.target.value, 10);
-    if (Number.isInteger(v)) jumpToMainline(v);
-  });function computeStartFen(game) {
+slider.addEventListener('input', function (e) {
+  const v = parseInt(e.target.value, 10);
+  if (Number.isInteger(v)) jumpToMainline(v);
+});function computeStartFen(game) {
   if (!game || !game.tags) return null;
   if (game.tags.SetUp === '1' && typeof game.tags.FEN === 'string' && game.tags.FEN.length) {
     return game.tags.FEN;
@@ -375,9 +399,7 @@ function buildFenAtPath(game, path, varPos) {
     }
   }
   return { fen: c.fen(), error: null };
-}
-
-function getCurrentList() {
+}function getCurrentList() {
   if (state.selectedIdx < 0) return [];
   const game = state.games[state.selectedIdx];
   if (!game) return [];
@@ -447,9 +469,7 @@ function validateVariationPath(game, path, varPos) {
   }
 
   return { valid: true, list: list };
-}
-
-function getCurrentHighlightKey() {
+}function getCurrentHighlightKey() {
   if (state.selectedIdx < 0) return null;
   if (state.variationPath.length === 0) return 'main:' + state.moveIdx;
   return 'var:' + JSON.stringify(state.variationPath) + ':' + state.variationPos;
@@ -505,8 +525,7 @@ function updateSlider() {
   const inVar = state.variationPath.length > 0;
   slider.max = String(state.totalMoves);
   slider.value = String(state.moveIdx);
-  slider.disabled = !hasGame || inVar || drillSession.active;
-}function renderMetadata() {
+  slfunction renderMetadata() {
   if (!metaContainer) return;
   metaContainer.innerHTML = '';
   if (state.selectedIdx < 0) {
@@ -572,9 +591,8 @@ function updateSlider() {
   }
 
   metaContainer.appendChild(frag);
-}
-
-function renderRav() {
+  }ider.disabled = !hasGame || inVar || drillSession.active;
+}function renderRav() {
   ravContainer.innerHTML = '';
   const inVar = state.variationPath.length > 0;
   let variations = [];
@@ -634,9 +652,7 @@ function renderRav() {
     });
     ravContainer.appendChild(exitBtn);
   }
-}
-
-function formatMoveText(move) {
+}function formatMoveText(move) {
   if (!move || !move.san) return '';
   let t = '';
   if (move.color === 'w' && move.moveNumber != null) t = move.moveNumber + '. ';
@@ -709,9 +725,7 @@ function renderMoveList() {
       }
     }
   }
-}
-
-function getCurrentMoveForExplanation() {
+}function getCurrentMoveForExplanation() {
   if (state.selectedIdx < 0) return null;
   const game = state.games[state.selectedIdx];
   if (!game) return null;
@@ -795,9 +809,7 @@ function renderExplanation() {
     n.textContent = nags.join(', ');
     explanationContainer.appendChild(n);
   }
-}
-
-function jumpToMainline(idx) {
+}function jumpToMainline(idx) {
   if (state.selectedIdx < 0) return;
   const game = state.games[state.selectedIdx];
   if (!game) return;
@@ -806,7 +818,7 @@ function jumpToMainline(idx) {
   state.variationPath = [];
   state.variationPos = 0;
   state.moveIdx = idx;
-  renderCurrent();
+  renderCurrentDrillAware();
 }
 
 function jumpToVariation(path, varPos) {
@@ -821,10 +833,30 @@ function jumpToVariation(path, varPos) {
   });
   state.variationPos = varPos;
   renderCurrent();
+}  function isDrillPlyMatching() {
+  if (drillSession.sideFilter === 'both') return true;
+  const game = state.games[state.selectedIdx];
+  if (!game) return true;
+  const moves = Array.isArray(game.moves) ? game.moves : [];
+  const m = moves[state.moveIdx];
+  let side;
+  if (m && (m.color === 'w' || m.color === 'b')) {
+    side = (m.color === 'w') ? 'white' : 'black';
+  } else {
+    side = (state.moveIdx % 2 === 0) ? 'white' : 'black';
+  }
+  return side === drillSession.sideFilter;
 }
 
-function renderCurrent() {
-  if (state.selectedIdx < 0) {
+function renderCurrentDrillAware() {
+  if (drillSession.active && state.variationPath.length === 0) {
+    while (state.moveIdx < state.totalMoves && !isDrillPlyMatching()) {
+      state.moveIdx += 1;
+    }
+  }
+  renderCurrent();
+}  function renderCurrent() {
+    if (state.selectedIdx < 0) {
     updateCounter(); updateButtons(); updateSlider();
     renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
     updateDrillUI();
@@ -862,9 +894,7 @@ function renderCurrent() {
   updateCounter(); updateButtons(); updateSlider();
   renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
   updateDrillUI();
-}
-
-function enterVariation(varIdx) {
+}function enterVariation(varIdx) {
   if (drillSession.active) resetDrillState();
   if (state.selectedIdx < 0) return;
   const inVar = state.variationPath.length > 0;
@@ -912,7 +942,7 @@ function stepPrev() {
     return;
   }
   if (state.moveIdx > 0) state.moveIdx -= 1;
-  renderCurrent();
+  renderCurrentDrillAware();
 }
 
 function stepNext() {
@@ -922,10 +952,8 @@ function stepNext() {
   } else {
     if (state.moveIdx < state.totalMoves) state.moveIdx += 1;
   }
-  renderCurrent();
-}
-
-function getExpectedSanForDrill() {
+  renderCurrentDrillAware();
+}function getExpectedSanForDrill() {
   if (state.selectedIdx < 0) return null;
   if (state.variationPath.length > 0) return null;
   const game = state.games[state.selectedIdx];
@@ -937,12 +965,13 @@ function getExpectedSanForDrill() {
   return (m && typeof m.san === 'string' && m.san.length) ? m.san : null;
 }
 
-function resetDrillState() {
+ function resetDrillState() {
   drillSession.active = false;
   drillSession.attempted = 0;
   drillSession.correct = 0;
   drillSession.lastFeedback = null;
-}
+  drillSession.sideFilter = 'both';
+  }
 
 function updateDrillUI() {
   if (!drillPanel || !btnDrill) return;
@@ -955,6 +984,12 @@ function updateDrillUI() {
     drillPanel.classList.add('hidden');
     btnDrill.disabled = m14Focused;
   }
+  // A4: side-selector active-state rendering (no mutation)
+  const sideBtns = drillSideSelector.querySelectorAll('button[data-side]');
+for (let i = 0; i < sideBtns.length; i++) {
+  if (sideBtns[i].dataset.side === drillSession.sideFilter) sideBtns[i].classList.add('active');
+  else sideBtns[i].classList.remove('active');
+}
 
   const hasNext = drillSession.active && getExpectedSanForDrill() !== null;
   drillInput.disabled = !drillSession.active || !hasNext;
@@ -973,17 +1008,16 @@ function updateDrillUI() {
     drillFeedback.textContent = '';
     drillFeedback.className = 'pgn-viewer-drill-feedback';
   }
-}
-
-function enterDrill() {
+}function enterDrill() {
   if (state.selectedIdx < 0) return;
   if (state.variationPath.length > 0) return;
   drillSession.active = true;
   drillSession.attempted = 0;
   drillSession.correct = 0;
   drillSession.lastFeedback = null;
+  drillSession.sideFilter = 'both';
   drillInput.value = '';
-  renderCurrent();
+  renderCurrentDrillAware();
 }
 
 function exitDrill() {
@@ -1009,7 +1043,7 @@ function handleDrillSubmit() {
     drillSession.lastFeedback = 'incorrect';
   }
   drillInput.value = '';
-  renderCurrent();
+  renderCurrentDrillAware();
 }
 
 function handleDrillReveal() {
@@ -1020,134 +1054,128 @@ function handleDrillReveal() {
   drillSession.lastFeedback = null;
   if (state.moveIdx < state.totalMoves) state.moveIdx += 1;
   drillInput.value = '';
-  renderCurrent();
-}  function buildSelectOptions() {
-    select.innerHTML = '';
-    if (!state.games.length) {
-      const opt = document.createElement('option');
-      opt.value = '-1';
-      opt.textContent = '\u2014 ' + L.noGames + ' \u2014';
-      select.appendChild(opt);
-      select.disabled = true;
-      return;
-    }
-    select.disabled = false;
-    for (let i = 0; i < state.games.length; i++) {
-      const g = state.games[i];
-      const opt = document.createElement('option');
-      opt.value = String(i);
-      const ev = (g.tags && g.tags.Event) ? g.tags.Event : ('Game ' + (i + 1));
-      const w = (g.tags && g.tags.White) ? g.tags.White : '?';
-      const b = (g.tags && g.tags.Black) ? g.tags.Black : '?';
-      opt.textContent = (i + 1) + '. ' + ev + ' \u2014 ' + w + ' vs ' + b;
-      select.appendChild(opt);
-    }
+  renderCurrentDrillAware();
+}function buildSelectOptions() {
+  select.innerHTML = '';
+  if (!state.games.length) {
+    const opt = document.createElement('option');
+    opt.value = '-1';
+    opt.textContent = '\u2014 ' + L.noGames + ' \u2014';
+    select.appendChild(opt);
+    select.disabled = true;
+    return;
   }
+  select.disabled = false;
+  for (let i = 0; i < state.games.length; i++) {
+    const g = state.games[i];
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    const ev = (g.tags && g.tags.Event) ? g.tags.Event : ('Game ' + (i + 1));
+    const w = (g.tags && g.tags.White) ? g.tags.White : '?';
+    const b = (g.tags && g.tags.Black) ? g.tags.Black : '?';
+    opt.textContent = (i + 1) + '. ' + ev + ' \u2014 ' + w + ' vs ' + b;
+    select.appendChild(opt);
+  }
+}
 
-  function selectGame(idx) {
-    if (drillSession.active) {
-      resetDrillState();
-      drillInput.value = '';
+function selectGame(idx) {
+  if (drillSession.active) {
+    resetDrillState();
+    drillInput.value = '';
+  }
+  state.selectedIdx = idx;
+  state.variationPath = [];
+  state.variationPos = 0;
+  if (idx < 0) {
+    state.moveIdx = 0;
+    state.totalMoves = 0;
+  } else {
+    const g = state.games[idx];
+    state.totalMoves = (g && Array.isArray(g.moves)) ? g.moves.length : 0;
+    state.moveIdx = 0;
+  }
+  renderCurrent();
+}select.addEventListener('change', () => {
+  const idx = parseInt(select.value, 10);
+  if (Number.isFinite(idx)) selectGame(idx);
+});
+
+btnInit.addEventListener('click', () => {
+  if (state.variationPath.length > 0) {
+    state.variationPos = 0;
+  } else {
+    state.moveIdx = 0;
+  }
+  renderCurrentDrillAware();
+});
+
+btnPrev.addEventListener('click', () => {
+  if (state.variationPath.length > 0) {
+    if (state.variationPos > 0) {
+      state.variationPos -= 1;
+      renderCurrent();
+    } else {
+      exitVariation();
     }
-    state.selectedIdx = idx;
+    return;
+  }
+  if (state.moveIdx > 0) state.moveIdx -= 1;
+     renderCurrentDrillAware();
+});
+
+btnNext.addEventListener('click', () => {
+  if (state.variationPath.length > 0) {
+    const N = getCurrentList().length;
+    if (state.variationPos < N) state.variationPos += 1;
+  } else {
+    if (state.moveIdx < state.totalMoves) state.moveIdx += 1;
+  }
+  renderCurrentDrillAware();
+});
+
+btnFinal.addEventListener('click', () => {
+  if (state.variationPath.length > 0) {
+    state.variationPos = getCurrentList().length;
+  } else {
+    state.moveIdx = state.totalMoves;
+  }
+  renderCurrentDrillAware();
+});
+
+btnDrill.addEventListener('click', function () {
+  if (drillSession.active) exitDrill();
+  else enterDrill();
+});
+
+drillSubmit.addEventListener('click', handleDrillSubmit);
+drillReveal.addEventListener('click', handleDrillReveal);
+
+drillInput.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    handleDrillSubmit();
+  }
+});function refresh() {
+  const games = getGames();
+  state.games = Array.isArray(games) ? games : [];
+  buildSelectOptions();
+  if (state.games.length === 0) {
+    resetDrillState();
+    drillInput.value = '';
+    state.selectedIdx = -1;
+    state.moveIdx = 0;
+    state.totalMoves = 0;
     state.variationPath = [];
     state.variationPos = 0;
-    if (idx < 0) {
-      state.moveIdx = 0;
-      state.totalMoves = 0;
-    } else {
-      const g = state.games[idx];
-      state.totalMoves = (g && Array.isArray(g.moves)) ? g.moves.length : 0;
-      state.moveIdx = 0;
-    }
-    renderCurrent();
+    updateCounter(); updateButtons(); updateSlider();
+    renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
+    updateDrillUI();
+    setStatus('', false);
+  } else {
+    select.value = '0';
+    selectGame(0);
   }
-
-  select.addEventListener('change', () => {
-    const idx = parseInt(select.value, 10);
-    if (Number.isFinite(idx)) selectGame(idx);
-  });
-
-  btnInit.addEventListener('click', () => {
-    if (state.variationPath.length > 0) {
-      state.variationPos = 0;
-    } else {
-      state.moveIdx = 0;
-    }
-    renderCurrent();
-  });
-
-  btnPrev.addEventListener('click', () => {
-    if (state.variationPath.length > 0) {
-      if (state.variationPos > 0) {
-        state.variationPos -= 1;
-        renderCurrent();
-      } else {
-        exitVariation();
-      }
-      return;
-    }
-    if (state.moveIdx > 0) state.moveIdx -= 1;
-    renderCurrent();
-  });
-
-  btnNext.addEventListener('click', () => {
-    if (state.variationPath.length > 0) {
-      const N = getCurrentList().length;
-      if (state.variationPos < N) state.variationPos += 1;
-    } else {
-      if (state.moveIdx < state.totalMoves) state.moveIdx += 1;
-    }
-    renderCurrent();
-  });
-
-  btnFinal.addEventListener('click', () => {
-    if (state.variationPath.length > 0) {
-      state.variationPos = getCurrentList().length;
-    } else {
-      state.moveIdx = state.totalMoves;
-    }
-    renderCurrent();
-  });
-
-  btnDrill.addEventListener('click', function () {
-    if (drillSession.active) exitDrill();
-    else enterDrill();
-  });
-
-  drillSubmit.addEventListener('click', handleDrillSubmit);
-  drillReveal.addEventListener('click', handleDrillReveal);
-
-  drillInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleDrillSubmit();
-    }
-  });
-
-  function refresh() {
-    const games = getGames();
-    state.games = Array.isArray(games) ? games : [];
-    buildSelectOptions();
-    if (state.games.length === 0) {
-      resetDrillState();
-      drillInput.value = '';
-      state.selectedIdx = -1;
-      state.moveIdx = 0;
-      state.totalMoves = 0;
-      state.variationPath = [];
-      state.variationPos = 0;
-      updateCounter(); updateButtons(); updateSlider();
-      renderMetadata(); renderRav(); renderMoveList(); renderExplanation();
-      updateDrillUI();
-      setStatus('', false);
-    } else {
-      select.value = '0';
-      selectGame(0);
-    }
-  }
-
-  function getFenAt(idx) {
+}  function getFenAt(idx) {
     if (state.selectedIdx < 0) return { fen: '', error: 'no game selected' };
     const game = state.games[state.selectedIdx];
     if (!game) return { fen: '', error: 'no game selected' };
