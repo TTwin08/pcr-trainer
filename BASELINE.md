@@ -981,3 +981,60 @@ Variant = 1A (next-move prompt)
 
 - Fallback: baseline/m14-pass → f9343f7
 - Restore method: file copy from baseline (atomic · PO-controlled)
+
+### Commit Chain
+- M16 — Side-specific Drill (A4)
+  - Version: 0.16.0
+  - Tag: baseline/m16-pass → c106b6f
+  - Entry baseline: m15-pass → a71ca9e
+  - Date: 2026-09-22
+  - Commit: c106b6f (parent 28c5676)
+  - Editable file: js/pgn-viewer.js only
+
+### Scope
+- M16 = PG-3 · Trainer Follow-up / Expansion
+- Variant = A4 (Side-Specific Drill · additive to M15 A1)
+  - Session-only memory state (no persistence)
+  - Side filter (both / white / black)
+  - Side detection: hybrid (move.color primary)
+  - Auto-skip (renderCurrentDrillAware wrapper)
+  - Move list drill-aware click
+  - Arrow keys drill-aware
+  - Nav buttons drill-aware
+
+### Boundaries preserved
+- No persistence (localStorage / sessionStorage / IndexedDB / cookies)
+- No C-13 schema change
+- No move.san / move.comment / move.nags mutation
+- toPGN() byte-identical
+- No new file · no dependency
+- board.js · pgn-model.js · i18n.js · css/style.css untouched
+- Public API unchanged
+- M15 baseline immutable
+
+### Verification
+- G-VERIFY complete (20 VE-D + 14 P + M15 regression)
+- PASS: 31 · FAIL: 0 (VE-D9 fixed via GV-D-1)
+- VE-C10 / VE-C12 / VE-D11 = N/A (preserved)
+- V1-V14 exact-match vs M15 baseline = UNKNOWN (preserved)
+- GitHub Pages runtime post-A4-push = UNKNOWN (not pushed)
+- C-13 no-write verified
+
+### Deviations
+- D-11 snippet paste corruption (Eruda) = NOTED
+- D-12 L1001 nul typo = RESOLVED (GV-D-1)
+- D-13 spec §5 vs impl = NOTED
+- D-14 single game fixture = PRESERVED
+- D-15 no physical keyboard = PRESERVED
+- D-16 commit message discrepancy = NOTED
+- D-17 line count variance (local 1265 vs remote 1228) = NOTED
+
+### Unknown / deferred (preserved)
+- PgnParser race = UNKNOWN (out of M16 scope)
+- F-1 · F-6 · N2 · GAP-8 · OBS-B · OBS-Y preserved
+- VE-B5 / B6 / B9 N/A preserved
+- M13 / M14 below-cutoff preserved
+
+### Rollback
+- Fallback: baseline/m15-pass → a71ca9e
+- Restore method: file copy from baseline (atomic · PO-controlled)
